@@ -12,12 +12,14 @@ import {
   LogOut,
   Menu,
   X,
-  User,
-  Bell
+  Bell,
+  Loader2,
 } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
 
 const sidebarLinks = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -30,6 +32,22 @@ const sidebarLinks = [
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    try {
+      setIsSigningOut(true);
+      await signOut();
+      toast.success("Signed out successfully.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to sign out.");
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const avatarFallback = user?.email?.charAt(0)?.toUpperCase() ?? "U";
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
@@ -91,10 +109,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
         
         <div className="border-t p-4">
-          <Link href="/" className={buttonVariants({ variant: "outline", className: "w-full justify-start gap-3" })}>
-            <LogOut size={16} />
-            Sign out
-          </Link>
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+          >
+            {isSigningOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+            {isSigningOut ? "Signing out..." : "Sign out"}
+          </Button>
         </div>
       </aside>
 
@@ -121,9 +144,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Bell size={20} />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden sm:inline-flex"
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              disabled={isSigningOut}
+            >
+              {isSigningOut ? <Loader2 size={18} className="animate-spin" /> : <LogOut size={18} />}
+            </Button>
             <Avatar className="h-9 w-9 border border-border">
-              <AvatarImage src="https://github.com/shadcn.png" alt="@user" />
-              <AvatarFallback><User size={16} /></AvatarFallback>
+              <AvatarImage src={user?.user_metadata?.avatar_url ?? "https://github.com/shadcn.png"} alt={user?.email ?? "User"} />
+              <AvatarFallback>{avatarFallback}</AvatarFallback>
             </Avatar>
           </div>
         </header>

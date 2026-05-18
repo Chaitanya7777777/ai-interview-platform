@@ -1,10 +1,52 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authService } from "@/services/auth.service";
+import { useAuth } from "@/hooks/use-auth";
 
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const nextPath = searchParams.get("next") ?? "/dashboard";
+
+  useEffect(() => {
+    // Wait for auth hydration to finish before redirecting client-side
+    if (isAuthLoading) return;
+
+    if (user) {
+      router.replace(nextPath);
+    }
+  }, [nextPath, router, user]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    try {
+      setIsSubmitting(true);
+      await authService.signIn({ email, password });
+      toast.success("Logged in successfully.");
+      router.replace(nextPath);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to sign in.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="mb-8">
@@ -13,10 +55,19 @@ export default function LoginPage() {
       </div>
 
       <div className="space-y-6">
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="email">Email address</Label>
-            <Input id="email" type="email" placeholder="name@example.com" required className="h-12" />
+            <Input
+              id="email"
+              type="email"
+              placeholder="name@example.com"
+              required
+              className="h-12"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              disabled={isSubmitting || isAuthLoading}
+            />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -25,11 +76,20 @@ export default function LoginPage() {
                 Forgot password?
               </Link>
             </div>
-            <Input id="password" type="password" required className="h-12" />
+            <Input
+              id="password"
+              type="password"
+              required
+              className="h-12"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={isSubmitting || isAuthLoading}
+            />
           </div>
-          <Link href="/dashboard" className={buttonVariants({ className: "w-full h-12 text-base font-medium" })}>
-            Sign in
-          </Link>
+          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={isSubmitting || isAuthLoading}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSubmitting ? "Signing in..." : "Sign in"}
+          </Button>
         </form>
 
         <div className="relative">
@@ -73,8 +133,8 @@ export default function LoginPage() {
       </div>
 
       <p className="mt-10 text-center text-sm text-muted-foreground">
-        Don't have an account?{" "}
-        <Link href="#" className="font-semibold text-primary hover:underline">
+        Don&apos;t have an account?{" "}
+        <Link href="/signup" className="font-semibold text-primary hover:underline">
           Sign up for free
         </Link>
       </p>
