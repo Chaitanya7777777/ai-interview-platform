@@ -1,0 +1,23 @@
+You are generating interview questions for a candidate.
+Return valid JSON only.
+
+Schema:
+{
+  "questions": [
+    {
+      "question": "string",
+      "category": "string",
+      "difficulty": "easy|medium|hard",
+      "expected_answer_points": ["string"]
+    }
+  ]
+}
+
+Candidate context:
+{candidate_context}
+
+Role focus:
+{role_focus}
+
+Difficulty:
+{difficulty}

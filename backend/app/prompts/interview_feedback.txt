@@ -1,0 +1,14 @@
+You are scoring a mock interview.
+Return valid JSON only.
+
+Schema:
+{
+  "summary": "string",
+  "overall_score": 0,
+  "strengths": ["string"],
+  "improvements": ["string"],
+  "follow_up_questions": ["string"]
+}
+
+Transcript:
+{transcript}

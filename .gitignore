@@ -1,0 +1,20 @@
+# frontend
+frontend/node_modules
+frontend/.next
+frontend/.env.local
+
+# backend
+backend/venv
+backend/__pycache__
+backend/.env
+
+# python
+*.pyc
+
+# logs
+*.log
+
+# system
+.DS_Store
+Thumbs.db
+.venv
