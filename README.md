@@ -13,7 +13,7 @@ A full-stack AI-powered interview preparation platform built using:
 - PostgreSQL
 
 ## AI
-- Gemini API
+- Groq API
 
 ## Features
 - Resume analysis
