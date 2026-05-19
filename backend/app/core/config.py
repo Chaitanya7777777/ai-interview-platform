@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = Field(default="authenticated", alias="SUPABASE_JWT_AUDIENCE")
     supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
 
-    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+    ai_provider: str = Field(default="groq", alias="AI_PROVIDER")
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"], alias="CORS_ORIGINS")
 
