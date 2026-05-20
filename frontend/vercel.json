@@ -1,0 +1,49 @@
+# Vercel deployment configuration for the Next.js frontend.
+# Docs: https://vercel.com/docs/projects/project-configuration
+#
+# USAGE:
+#   1. Place this file in the frontend/ directory (alongside package.json).
+#   2. In Vercel dashboard → New Project → Import repo → set Root Directory to "frontend".
+#   3. Vercel auto-detects Next.js. This file sets environment variable reminders.
+#
+# Environment variables must be added via the Vercel Dashboard:
+#   Project → Settings → Environment Variables
+# Never commit real secret values to this file.
+
+{
+  "framework": "nextjs",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ],
+
+  "rewrites": [
+    {
+      "source": "/api/backend/:path*",
+      "destination": "https://resume-analyser-api.onrender.com/api/:path*"
+    }
+  ]
+}
