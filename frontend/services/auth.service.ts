@@ -69,5 +69,15 @@ export const authService = {
 
     return data.session;
   },
+
+  async getUser(): Promise<User | null> {
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error) {
+      throw error;
+    }
+
+    return data.user ?? null;
+  },
   
 };

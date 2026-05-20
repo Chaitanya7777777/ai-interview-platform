@@ -23,3 +23,8 @@ export function getSupabaseBrowserClient(): SupabaseClient {
 }
 
 export const supabase = getSupabaseBrowserClient();
+
+if (typeof window !== "undefined") {
+  // @ts-ignore
+  window.supabase = supabase;
+}

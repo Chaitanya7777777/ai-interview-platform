@@ -1,257 +1,245 @@
+/**
+ * app/(dashboard)/resume-analysis/page.tsx
+ * -----------------------------------------
+ * Resume Analysis page — orchestrates upload, AI analysis, and history.
+ *
+ * State machine:
+ *   "upload"   → user sees upload card + history below
+ *   "loading"  → file is being sent + AI is running
+ *   "result"   → analysis complete, AnalysisCard shown above history
+ *   "error"    → upload or analysis failed, error banner shown
+ *
+ * Data flow:
+ *   UploadZone (selects file) → handleUpload (calls resumeService.uploadResume)
+ *   → on success: set result state, increment refreshKey → HistoryList re-fetches
+ *   → on failure: set error state, show toast
+ */
+
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import {
+  UploadCloud,
+  Sparkles,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { UploadCloud, File, CheckCircle2, XCircle, AlertCircle, RefreshCw } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { UploadZone } from "@/components/resume-analysis/upload-zone";
+import { AnalysisCard } from "@/components/resume-analysis/analysis-card";
+import { AnalysisLoadingSkeleton } from "@/components/resume-analysis/loading-skeleton";
+import { HistoryList } from "@/components/resume-analysis/history-list";
+
+import { resumeService, ResumeUploadResponse } from "@/services/resume.service";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type PagePhase = "upload" | "loading" | "result" | "error";
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ResumeAnalysisPage() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [isAnalyzed, setIsAnalyzed] = useState(false);
+  // Phase controls which section is shown
+  const [phase, setPhase] = useState<PagePhase>("upload");
 
-  const handleUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      setIsAnalyzed(true);
-    }, 2500);
-  };
+  // The selected file from the upload zone
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Last successful upload response
+  const [uploadResult, setUploadResult] = useState<ResumeUploadResponse | null>(null);
+
+  // Error message when phase === "error"
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Loading progress label (upload → analysing)
+  const [loadingLabel, setLoadingLabel] = useState("Uploading...");
+
+  // Incrementing this key triggers HistoryList to re-fetch
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleFileSelect = useCallback((file: File) => {
+    setSelectedFile(file);
+    // Clear previous results when a new file is picked
+    setUploadResult(null);
+    setErrorMessage(null);
+    if (phase === "result" || phase === "error") {
+      setPhase("upload");
+    }
+  }, [phase]);
+
+  const handleUpload = useCallback(async () => {
+    if (!selectedFile) {
+      toast.error("Please select a resume file first.");
+      return;
+    }
+
+    setPhase("loading");
+    setLoadingLabel("Uploading resume...");
+
+    // After a short delay, update label to reflect AI is running
+    const labelTimer = setTimeout(() => setLoadingLabel("Running AI analysis..."), 2500);
+
+    try {
+      const result = await resumeService.uploadResume(selectedFile, { analyse: true });
+      setUploadResult(result);
+      setPhase("result");
+      setHistoryRefreshKey((k) => k + 1); // trigger HistoryList re-fetch
+      toast.success("Resume analysed successfully!");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed. Please try again.";
+      setErrorMessage(message);
+      setPhase("error");
+      toast.error(message);
+    } finally {
+      clearTimeout(labelTimer);
+    }
+  }, [selectedFile]);
+
+  const handleReset = useCallback(() => {
+    setPhase("upload");
+    setSelectedFile(null);
+    setUploadResult(null);
+    setErrorMessage(null);
+  }, []);
+
+  // Derived boolean — used in JSX so TS doesn't narrow the type away
+  // inside conditional render blocks
+  const isLoading = phase === "loading";
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Resume Intelligence</h2>
-        <p className="text-muted-foreground mt-1">Upload your resume and get AI-powered feedback tailored to your target job.</p>
+    <div className="space-y-8">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Resume Intelligence</h2>
+          <p className="text-muted-foreground mt-1">
+            Upload your resume and get instant AI-powered feedback.
+          </p>
+        </div>
+        {phase === "result" && (
+          <Button variant="outline" onClick={handleReset}>
+            <UploadCloud className="mr-2 h-4 w-4" />
+            Upload New
+          </Button>
+        )}
       </div>
 
-      {!isAnalyzed ? (
-        <div className="grid lg:grid-cols-2 gap-8">
-          <Card className="shadow-sm border-border/50">
+      {/* ── Phase: upload ──────────────────────────────────────────────── */}
+      {(phase === "upload" || phase === "error") && (
+        <div className="grid lg:grid-cols-5 gap-6">
+          {/* Upload card — takes 3/5 columns on large screens */}
+          <Card className="lg:col-span-3 shadow-sm border-border/60">
             <CardHeader>
               <CardTitle>Upload Resume</CardTitle>
-              <CardDescription>We support PDF, DOCX, and TXT files up to 5MB.</CardDescription>
+              <CardDescription>
+                Drag and drop or click to select your resume — PDF or DOCX, max 5 MB.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="border-2 border-dashed border-primary/20 rounded-xl p-12 flex flex-col items-center justify-center bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer group">
-                <div className="h-16 w-16 bg-background rounded-full shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <UploadCloud className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-semibold text-lg mb-1">Click to upload or drag and drop</h3>
-                <p className="text-sm text-muted-foreground text-center">
-                  PDF, DOCX, or TXT (max. 5MB)
-                </p>
-              </div>
-              
-              {isUploading && (
-                <div className="mt-6 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="flex items-center text-primary font-medium">
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Analyzing resume...
-                    </span>
-                    <span className="text-muted-foreground">75%</span>
-                  </div>
-                  <Progress value={75} className="h-2" />
+              <UploadZone
+                onFileSelect={handleFileSelect}
+                disabled={isLoading}
+              />
+
+              {/* Error banner */}
+              {phase === "error" && errorMessage && (
+                <div
+                  className="mt-4 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+                  role="alert"
+                >
+                  <span className="shrink-0">⚠</span>
+                  <span>{errorMessage}</span>
                 </div>
               )}
             </CardContent>
-            <CardFooter>
-              <Button className="w-full h-12" onClick={handleUpload} disabled={isUploading}>
-                {isUploading ? "Processing..." : "Analyze Resume"}
+            <CardFooter className="flex gap-3">
+              <Button
+                className="flex-1 h-11"
+                onClick={handleUpload}
+                disabled={!selectedFile || isLoading}
+                id="analyse-resume-btn"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {phase === "error" ? "Retry Analysis" : "Analyse with AI"}
               </Button>
             </CardFooter>
           </Card>
 
-          <Card className="shadow-sm border-border/50">
+          {/* Tips card — takes 2/5 columns */}
+          <Card className="lg:col-span-2 shadow-sm border-border/60 h-fit">
             <CardHeader>
-              <CardTitle>Target Job Description</CardTitle>
-              <CardDescription>Optional: Paste a job description for tailored feedback.</CardDescription>
+              <CardTitle className="text-base">What you'll get</CardTitle>
+              <CardDescription>From your AI analysis</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="role">Target Role</Label>
-                  <input 
-                    id="role" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
-                    placeholder="e.g. Senior Frontend Engineer" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="jd">Job Description</Label>
-                  <Textarea 
-                    id="jd" 
-                    placeholder="Paste the requirements and responsibilities here..." 
-                    className="min-h-[200px] resize-none" 
-                  />
-                </div>
-              </div>
+              <ul className="space-y-3">
+                {[
+                  { icon: "🎯", label: "Overall resume score (0–100)" },
+                  { icon: "✅", label: "Identified strengths" },
+                  { icon: "⚠️", label: "Weaknesses to address" },
+                  { icon: "🔑", label: "Missing skills for ATS" },
+                  { icon: "💼", label: "Recommended job roles" },
+                  { icon: "💡", label: "Actionable improvement steps" },
+                ].map((item) => (
+                  <li key={item.label} className="flex items-center gap-3 text-sm">
+                    <span className="text-base shrink-0" aria-hidden="true">{item.icon}</span>
+                    <span className="text-muted-foreground">{item.label}</span>
+                  </li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
         </div>
-      ) : (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="flex flex-col md:flex-row justify-between gap-4 items-start">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 bg-card border rounded-xl flex items-center justify-center shadow-sm">
-                <File className="h-8 w-8 text-primary" />
+      )}
+
+      {/* ── Phase: loading ─────────────────────────────────────────────── */}
+      {phase === "loading" && (
+        <div className="space-y-6">
+          {/* Loading banner */}
+          <Card className="border-primary/30 bg-primary/5 shadow-sm">
+            <CardContent className="flex items-center gap-4 py-5">
+              <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                <Loader2 className="h-5 w-5 text-primary animate-spin" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">alex_resume_2024.pdf</h3>
-                <p className="text-muted-foreground flex items-center gap-2">
-                  Analyzed just now <Badge variant="secondary">Target: Frontend Engineer</Badge>
+                <p className="font-semibold text-sm">{loadingLabel}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  This usually takes 10–30 seconds
                 </p>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsAnalyzed(false)}>
-                <UploadCloud className="mr-2 h-4 w-4" /> Upload New
-              </Button>
-              <Button>Download Enhanced PDF</Button>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="md:col-span-1 border-primary/20 shadow-md bg-gradient-to-b from-card to-card/50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Overall ATS Score</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center pt-4">
-                <div className="relative h-40 w-40 flex items-center justify-center mb-4">
-                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="45" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-muted/30" />
-                    <circle cx="50" cy="50" r="45" fill="transparent" stroke="currentColor" strokeWidth="8" strokeDasharray="283" strokeDashoffset="42.45" className="text-primary" />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-4xl font-bold">85</span>
-                    <span className="text-sm text-muted-foreground">/ 100</span>
-                  </div>
-                </div>
-                <div className="w-full space-y-4 mt-2">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Impact & Action</span>
-                      <span className="font-medium">92%</span>
-                    </div>
-                    <Progress value={92} className="h-1.5" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Keywords Match</span>
-                      <span className="font-medium">78%</span>
-                    </div>
-                    <Progress value={78} className="h-1.5" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Formatting</span>
-                      <span className="font-medium">100%</span>
-                    </div>
-                    <Progress value={100} className="h-1.5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="md:col-span-2 shadow-sm">
-              <CardHeader className="pb-0">
-                <Tabs defaultValue="insights" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 mb-4">
-                    <TabsTrigger value="insights">Key Insights</TabsTrigger>
-                    <TabsTrigger value="experience">Experience</TabsTrigger>
-                    <TabsTrigger value="keywords">Keywords</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="insights" className="mt-0">
-                    <div className="space-y-4">
-                      <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex gap-3">
-                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-green-700 dark:text-green-400">Strong Action Verbs</h4>
-                          <p className="text-sm text-green-600 dark:text-green-500/80 mt-1">You've effectively used action verbs like "Architected", "Spearheaded", and "Optimized" to start your bullet points.</p>
-                        </div>
-                      </div>
-                      
-                      <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex gap-3">
-                        <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-amber-700 dark:text-amber-400">Missing Metrics in Recent Role</h4>
-                          <p className="text-sm text-amber-600 dark:text-amber-500/80 mt-1">Your most recent role at TechCorp lacks quantifiable metrics. Try adding numbers to demonstrate impact (e.g., "improved performance by X%").</p>
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
-                        <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-red-700 dark:text-red-400">Missing Core Keyword: "GraphQL"</h4>
-                          <p className="text-sm text-red-600 dark:text-red-500/80 mt-1">The job description mentions GraphQL 4 times, but it is entirely missing from your resume. Consider adding it if you have experience.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-                  
-                  <TabsContent value="experience" className="mt-0">
-                    <div className="p-4 border rounded-xl space-y-4">
-                      <div className="flex justify-between items-start border-b pb-4">
-                        <div>
-                          <h4 className="font-semibold">Senior Frontend Developer</h4>
-                          <p className="text-sm text-muted-foreground">TechCorp • 2021 - Present</p>
-                        </div>
-                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">Needs Improvement</Badge>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex gap-2">
-                          <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                          <p className="text-sm">Developed new features for the main web application using React and Redux.</p>
-                        </div>
-                        <div className="ml-6 p-3 bg-primary/5 border border-primary/10 rounded-lg text-sm text-muted-foreground">
-                          <span className="font-medium text-primary">Suggestion:</span> "Architected and delivered 15+ complex features for the flagship web application using React and Redux, resulting in a 20% increase in user engagement."
-                        </div>
-                        <div className="flex gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                          <p className="text-sm">Optimized initial load time by implementing code splitting and lazy loading, reducing bundle size by 40%.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="keywords" className="mt-0">
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3 flex justify-between">
-                          <span>Matched Keywords (Found)</span>
-                          <span className="text-muted-foreground font-normal">78% Match</span>
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {["React", "TypeScript", "Next.js", "Redux", "Tailwind CSS", "Jest", "Git", "Agile", "CI/CD"].map((kw) => (
-                            <Badge key={kw} variant="secondary" className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20">{kw}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="pt-4 border-t">
-                        <h4 className="text-sm font-semibold mb-3 flex justify-between text-red-600">
-                          <span>Missing Keywords (Required)</span>
-                          <span className="text-muted-foreground font-normal">Add these</span>
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {["GraphQL", "Node.js", "AWS", "Microservices", "Docker"].map((kw) => (
-                            <Badge key={kw} variant="outline" className="bg-red-500/5 text-red-600 border-red-500/20">{kw}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </CardHeader>
-            </Card>
-          </div>
+            </CardContent>
+          </Card>
+          <AnalysisLoadingSkeleton />
         </div>
       )}
+
+      {/* ── Phase: result ──────────────────────────────────────────────── */}
+      {phase === "result" && uploadResult?.analysis_result && (
+        <div className="space-y-2">
+          {/* Quick stats row */}
+          <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium mb-2">
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            Analysis saved to your history
+          </div>
+
+          <AnalysisCard
+            result={uploadResult.analysis_result}
+            filename={uploadResult.filename}
+            warning={uploadResult.analysis_warning}
+          />
+        </div>
+      )}
+
+      {/* ── History (always visible, re-fetches after upload) ───────────── */}
+      <HistoryList refreshKey={historyRefreshKey} />
     </div>
   );
 }

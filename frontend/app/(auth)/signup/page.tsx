@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -10,12 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authService } from "@/services/auth.service";
-import { useAuth } from "@/hooks/use-auth";
 
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoading: isAuthLoading } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,12 +21,6 @@ export default function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const nextPath = searchParams.get("next") ?? "/dashboard";
-
-  useEffect(() => {
-    if (user) {
-      router.replace(nextPath);
-    }
-  }, [nextPath, router, user]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -38,24 +30,26 @@ export default function SignupPage() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
       const result = await authService.signUp({ email, password, fullName });
 
       if (result.session) {
         toast.success("Account created successfully.");
-        router.replace(nextPath);
+        router.refresh();
+        router.push(nextPath);
         return;
       }
 
       toast.success("Account created. Check your email to verify your account.");
-      router.replace("/login");
+      router.push("/login");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create account.");
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <div className="w-full">
@@ -75,7 +69,7 @@ export default function SignupPage() {
               className="h-12"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              disabled={isSubmitting || isAuthLoading}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -89,7 +83,7 @@ export default function SignupPage() {
               className="h-12"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              disabled={isSubmitting || isAuthLoading}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -102,7 +96,7 @@ export default function SignupPage() {
               className="h-12"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              disabled={isSubmitting || isAuthLoading}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -115,11 +109,11 @@ export default function SignupPage() {
               className="h-12"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              disabled={isSubmitting || isAuthLoading}
+              disabled={isSubmitting}
             />
           </div>
 
-          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={isSubmitting || isAuthLoading}>
+          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {isSubmitting ? "Creating account..." : "Sign up"}
           </Button>

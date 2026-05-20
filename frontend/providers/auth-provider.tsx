@@ -1,15 +1,25 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-import { authService } from "@/services/auth.service";
 import { supabase } from "@/lib/supabase";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
+  /** True until the first onAuthStateChange event fires. Never use routing logic while this is true. */
   isLoading: boolean;
   isAuthenticated: boolean;
   signOut: () => Promise<void>;
@@ -17,75 +27,60 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
+
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
-
-    // Register auth state change listener first so we react to immediate updates
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
-
+    /**
+     * The canonical Supabase SSR pattern:
+     *
+     * onAuthStateChange is the single source of truth for auth state.
+     * It fires synchronously with INITIAL_SESSION on mount (reading from
+     * the cookie/localStorage that createBrowserClient manages), and then
+     * for every subsequent auth event (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED).
+     *
+     * We do NOT call getSession() separately — that creates a second
+     * competing source of truth and a state race.
+     *
+     * We do NOT do any routing here. Routing is the middleware's job.
+     * The AuthProvider's only job is to keep the UI state in sync.
+     */
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-      // mark hydration complete when we receive an auth state event
+      // isLoading becomes false after the first event fires.
+      // This is the correct signal that the client knows the auth state.
       setIsLoading(false);
     });
 
-    async function loadSession() {
-      try {
-        const currentSession = await authService.getSession();
-
-        if (!isMounted) return;
-
-        // Populate state from getSession if listener didn't already
-        if (currentSession) {
-          setSession(currentSession);
-          setUser(currentSession.user ?? null);
-        }
-      } finally {
-        // ensure we clear the loading flag if it hasn't been cleared by the listener
-        if (isMounted) setIsLoading(false);
-      }
-    }
-
-    void loadSession();
-
     return () => {
-      isMounted = false;
-      data.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    if (pathname === "/login" || pathname === "/signup") {
-      router.replace("/dashboard");
-    }
-  }, [pathname, router, user]);
-
-  useEffect(() => {
-    // no-op: keep this hook for future side-effects if needed
-  }, [user]);
-
+  /**
+   * signOut:
+   * 1. Call supabase.auth.signOut() — clears the session from cookies AND localStorage.
+   * 2. Clear local state immediately so the UI reacts without waiting for onAuthStateChange.
+   * 3. Call router.refresh() to re-run the middleware, which will now see no session
+   *    and redirect to /login if currently on a protected page.
+   *
+   * We do NOT call router.replace("/login") here. The middleware handles the redirect
+   * after refresh(). Calling both causes a double navigation.
+   */
   const signOut = useCallback(async () => {
-    // Call service to sign out; ensure we clear client state and redirect.
-    try {
-      await authService.signOut();
-    } finally {
-      // always clear local client state and redirect to login
-      setSession(null);
-      setUser(null);
-      router.replace("/login");
-    }
+    await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
+    router.refresh();
   }, [router]);
 
   const value = useMemo<AuthContextValue>(
@@ -93,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user,
       isLoading,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: Boolean(session),
       signOut,
     }),
     [isLoading, session, signOut, user]
@@ -101,6 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAuthContext() {
   const context = useContext(AuthContext);
