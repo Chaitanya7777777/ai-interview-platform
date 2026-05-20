@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -11,7 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authService } from "@/services/auth.service";
 
-export default function SignupPage() {
+/**
+ * Inner component — isolated so that useSearchParams() is confined to a
+ * subtree that Next.js can wrap in Suspense during static generation.
+ */
+function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
@@ -49,7 +53,6 @@ export default function SignupPage() {
       setIsSubmitting(false);
     }
   };
-
 
   return (
     <div className="w-full">
@@ -127,5 +130,17 @@ export default function SignupPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+/**
+ * Page export — wraps SignupForm in Suspense so Next.js can statically
+ * prerender the shell while deferring the useSearchParams() read to the client.
+ */
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="w-full animate-pulse" aria-label="Loading..." />}>
+      <SignupForm />
+    </Suspense>
   );
 }

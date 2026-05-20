@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -12,19 +12,16 @@ import { Label } from "@/components/ui/label";
 import { authService } from "@/services/auth.service";
 
 /**
- * Login page.
+ * Inner component — isolated so that useSearchParams() is confined to a
+ * subtree that Next.js can wrap in Suspense during static generation.
  *
- * Routing responsibility:
- * - If the user is ALREADY authenticated when they navigate here,
- *   the middleware redirects them to /dashboard BEFORE this page renders.
- *   No client-side useEffect redirect is needed or wanted.
+ * Next.js App Router requires any component calling useSearchParams() to be
+ * inside a <Suspense> boundary. Without it the production build fails:
+ *   "useSearchParams() should be wrapped in a suspense boundary"
  *
- * - After a SUCCESSFUL sign-in, this page redirects to ?next or /dashboard.
- *   This is the only routing decision made here.
- *
- * - On failure, an error toast is shown and the form stays visible.
+ * Local dev (`next dev`) does not enforce this — only `next build` does.
  */
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -41,8 +38,6 @@ export default function LoginPage() {
     try {
       await authService.signIn({ email, password });
       toast.success("Signed in successfully.");
-      // router.refresh() re-runs the middleware so the server recognises the
-      // new session cookie, then we push to the destination page.
       router.refresh();
       router.push(nextPath);
     } catch (error) {
@@ -136,5 +131,17 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+/**
+ * Page export — wraps LoginForm in Suspense so Next.js can statically
+ * prerender the shell while deferring the useSearchParams() read to the client.
+ */
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="w-full animate-pulse" aria-label="Loading..." />}>
+      <LoginForm />
+    </Suspense>
   );
 }
