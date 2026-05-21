@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import sys
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import AnyHttpUrl, Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,24 +38,35 @@ class Settings(BaseSettings):
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
     groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
 
-    # ── CORS ───────────────────────────────────────────────────────────────────
-    # Comma-separated list in env var, e.g.:
-    #   CORS_ORIGINS=https://myapp.vercel.app,http://localhost:3000
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3000"],
+    # ── CORS ───────────────────────────────────────────────────────────────
+    # Stored as a raw string so pydantic-settings does NOT attempt json.loads()
+    # on a complex type before our own parsing logic runs.
+    #
+    # Accepted formats for the CORS_ORIGINS env var:
+    #   Comma-separated : https://myapp.vercel.app,http://localhost:3000
+    #   JSON array      : ["https://myapp.vercel.app","http://localhost:3000"]
+    cors_origins_raw: str = Field(
+        default="http://localhost:3000",
         alias="CORS_ORIGINS",
     )
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, value: object) -> list[str]:
-        if value is None:
+    @computed_field  # type: ignore[misc]
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS_ORIGINS into a list, accepting comma-separated or JSON array."""
+        raw = (self.cors_origins_raw or "").strip()
+        if not raw:
             return ["http://localhost:3000"]
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        if isinstance(value, list):
-            return [str(origin).strip() for origin in value if str(origin).strip()]
-        return ["http://localhost:3000"]
+        # Support JSON array format: ["https://app.vercel.app","http://localhost:3000"]
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [str(o).strip() for o in parsed if str(o).strip()]
+            except json.JSONDecodeError:
+                pass
+        # Default: comma-separated plain string
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     def validate_for_production(self) -> None:
         """
