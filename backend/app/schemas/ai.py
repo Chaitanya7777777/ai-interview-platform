@@ -39,3 +39,20 @@ class InterviewFeedbackResponse(BaseModel):
     strengths: list[str]
     improvements: list[str]
     follow_up_questions: list[str]
+
+
+class QuestionEvaluationResponse(BaseModel):
+    """
+    Per-question AI evaluation result.
+
+    Matches the JSON schema enforced by question_evaluation.txt.
+    score is 1-10 (not 0-100) to give finer granularity per question.
+    """
+
+    score: int = Field(ge=1, le=10, description="Answer quality score 1-10")
+    feedback: str = Field(description="2-3 sentence constructive assessment")
+    ideal_answer: str = Field(description="Model answer the candidate should aim for")
+    improvement_suggestions: list[str] = Field(
+        min_length=1,
+        description="Specific actionable improvements",
+    )

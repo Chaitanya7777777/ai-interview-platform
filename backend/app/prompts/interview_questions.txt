@@ -1,23 +1,34 @@
-You are generating interview questions for a candidate.
-Return valid JSON only.
+You are an expert technical interviewer generating a mock interview for a candidate.
 
-Schema:
-{
+Return ONLY valid JSON — no markdown, no explanation outside the JSON object.
+
+Generate exactly 7 interview questions for the following candidate and role.
+Mix: 3 technical questions specific to the role, 2 behavioral questions, 2 situational/problem-solving questions.
+
+JSON schema:
+{{
   "questions": [
-    {
-      "question": "string",
-      "category": "string",
-      "difficulty": "easy|medium|hard",
-      "expected_answer_points": ["string"]
-    }
+    {{
+      "question": "<the interview question>",
+      "category": "<technical|behavioral|situational>",
+      "difficulty": "<easy|medium|hard>",
+      "expected_answer_points": ["<key point 1>", "<key point 2>", "<key point 3>"]
+    }}
   ]
-}
+}}
 
-Candidate context:
+Candidate context (from resume):
 {candidate_context}
 
-Role focus:
+Target role:
 {role_focus}
 
-Difficulty:
+Interview difficulty level:
 {difficulty}
+
+Guidelines:
+- Tailor technical questions to the candidate's actual skills and the target role.
+- Behavioral questions should use the STAR method framework.
+- Expected answer points should be specific, not generic.
+- Match question difficulty to the requested level.
+- Do NOT include generic filler questions — make them specific to this candidate.

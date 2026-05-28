@@ -1,146 +1,200 @@
 "use client";
 
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { MissingSkillsChart } from "@/components/dashboard/MissingSkillsChart";
+import { RecommendedRolesChart } from "@/components/dashboard/RecommendedRolesChart";
+import { ScoreTrendChart } from "@/components/dashboard/ScoreTrendChart";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { ChartCardSkeleton, StatCardSkeleton } from "@/components/dashboard/AnalyticsSkeletons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
-import { Badge } from "@/components/ui/badge";
+import { AlertCircle, Award, FileText, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
+import Link from "next/link";
 
-const radarData = [
-  { subject: "System Design", A: 85, fullMark: 100 },
-  { subject: "Algorithms", A: 90, fullMark: 100 },
-  { subject: "Communication", A: 75, fullMark: 100 },
-  { subject: "Leadership", A: 70, fullMark: 100 },
-  { subject: "Problem Solving", A: 88, fullMark: 100 },
-  { subject: "Culture Fit", A: 85, fullMark: 100 },
-];
+// ── Empty State ───────────────────────────────────────────────────────────────
 
-const barData = [
-  { name: "Week 1", "Technical": 65, "Behavioral": 70 },
-  { name: "Week 2", "Technical": 70, "Behavioral": 75 },
-  { name: "Week 3", "Technical": 75, "Behavioral": 80 },
-  { name: "Week 4", "Technical": 85, "Behavioral": 82 },
-];
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/10 py-20 text-center">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+        <Sparkles className="h-7 w-7 text-primary" />
+      </div>
+      <h3 className="text-lg font-semibold">No analytics yet</h3>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+        No resume analytics available yet. Upload and analyse a resume to begin
+        tracking your ATS scores, skill gaps, and recommended roles.
+      </p>
+      <Link
+        href="/resume-analysis"
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+      >
+        <FileText className="h-4 w-4" />
+        Upload your first resume
+      </Link>
+    </div>
+  );
+}
+
+// ── Error State ───────────────────────────────────────────────────────────────
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-destructive/30 bg-destructive/5 py-16 text-center">
+      <AlertCircle className="mb-3 h-10 w-10 text-destructive/70" />
+      <h3 className="text-base font-semibold text-destructive">
+        Failed to load analytics
+      </h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{message}</p>
+      <button
+        onClick={onRetry}
+        className="mt-5 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        Try again
+      </button>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
+  const state = useAnalytics();
+
+  // Loading state
+  if (state.status === "loading") {
+    return (
+      <div className="space-y-6">
+        <PageHeader />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <ChartCardSkeleton height={280} />
+          <ChartCardSkeleton height={280} />
+        </div>
+        <ChartCardSkeleton height={300} />
+      </div>
+    );
+  }
+
+  // Error state
+  if (state.status === "error") {
+    return (
+      <div className="space-y-6">
+        <PageHeader />
+        <ErrorState message={state.message} onRetry={state.refetch} />
+      </div>
+    );
+  }
+
+  const { data } = state;
+  const hasAnalytics = data.analysed_resumes > 0;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Performance Analytics</h2>
-        <p className="text-muted-foreground mt-1">Deep dive into your interview skills and track your progress over time.</p>
-      </div>
+      <PageHeader />
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="shadow-sm border-border/50">
-          <CardHeader>
-            <CardTitle>Skill Breakdown</CardTitle>
-            <CardDescription>Your current proficiency across different interview areas based on AI analysis.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[400px] flex justify-center items-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                <PolarGrid stroke="hsl(var(--border))" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--foreground))", fontSize: 12 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <Radar name="Your Score" dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
-                  itemStyle={{ color: "hsl(var(--primary))" }}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* Empty state — has uploads but none analysed, or truly empty */}
+      {!hasAnalytics ? (
+        <EmptyState />
+      ) : (
+        <>
+          {/* ── Stat Cards ─────────────────────────────────────────────── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Total Resumes"
+              value={data.total_resumes}
+              subtext={`${data.analysed_resumes} analysed`}
+              icon={FileText}
+              iconBg="bg-primary/10"
+              iconColor="text-primary"
+            />
+            <StatCard
+              title="Average ATS Score"
+              value={`${data.average_score}/100`}
+              subtext="Across all analysed resumes"
+              icon={TrendingUp}
+              iconBg="bg-blue-500/10"
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              title="Best ATS Score"
+              value={`${data.best_score}/100`}
+              subtext="Your highest score"
+              icon={Award}
+              iconBg="bg-amber-500/10"
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              title="Top Missing Skill"
+              value={data.missing_skills[0]?.skill ?? "—"}
+              subtext={
+                data.missing_skills[0]
+                  ? `Missing in ${data.missing_skills[0].count} resume${data.missing_skills[0].count !== 1 ? "s" : ""}`
+                  : "No data yet"
+              }
+              icon={Sparkles}
+              iconBg="bg-purple-500/10"
+              iconColor="text-purple-500"
+            />
+          </div>
 
-        <Card className="shadow-sm border-border/50">
-          <CardHeader>
-            <CardTitle>Improvement Timeline</CardTitle>
-            <CardDescription>How your scores have trended across recent weeks.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))" }} dy={10} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip 
-                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
-                />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: "20px" }} />
-                <Bar dataKey="Technical" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Behavioral" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+          {/* ── Score Trend + Missing Skills ───────────────────────────── */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card className="shadow-sm border-border/50">
+              <CardHeader>
+                <CardTitle>ATS Score Trend</CardTitle>
+                <CardDescription>
+                  Your resume ATS score over time — most recent uploads on the right.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                <ScoreTrendChart data={data.score_trend} />
+              </CardContent>
+            </Card>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2 shadow-sm border-border/50">
-          <CardHeader>
-            <CardTitle>Actionable Recommendations</CardTitle>
-            <CardDescription>AI-generated focus areas for your next practice sessions.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { title: "Improve STAR Method Usage", desc: "You missed the 'Result' in 3 of your behavioral answers. Focus on quantifying your impact.", priority: "High" },
-              { title: "System Design Depth", desc: "Your high-level architectures are solid, but you often skip over database schema design.", priority: "Medium" },
-              { title: "Pacing", desc: "You tend to speak very quickly when explaining algorithms. Slow down to ensure clarity.", priority: "Low" }
-            ].map((rec, i) => (
-              <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-muted/30 rounded-xl border">
-                <div>
-                  <h4 className="font-semibold">{rec.title}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">{rec.desc}</p>
-                </div>
-                <Badge 
-                  variant={rec.priority === "High" ? "destructive" : rec.priority === "Medium" ? "default" : "secondary"} 
-                  className="mt-3 sm:mt-0 w-fit"
-                >
-                  {rec.priority} Priority
-                </Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+            <Card className="shadow-sm border-border/50">
+              <CardHeader>
+                <CardTitle>Top Missing Skills</CardTitle>
+                <CardDescription>
+                  Skills most frequently absent from your resumes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                <MissingSkillsChart data={data.missing_skills} />
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card className="shadow-sm border-border/50 bg-primary/5">
-          <CardHeader>
-            <CardTitle>Industry Benchmark</CardTitle>
-            <CardDescription>How you compare to successful candidates.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex justify-between items-end border-b border-primary/10 pb-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Your Percentile</p>
-                <p className="text-4xl font-bold text-primary">Top 15%</p>
-              </div>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">+5% this week</Badge>
-            </div>
-            <div>
-              <p className="text-sm font-medium mb-2">Readiness by Role</p>
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Frontend Engineer</span>
-                    <span className="font-medium text-green-600">Ready</span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 w-[90%]" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Full Stack Engineer</span>
-                    <span className="font-medium text-amber-600">Almost There</span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500 w-[70%]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* ── Recommended Roles ─────────────────────────────────────── */}
+          <Card className="shadow-sm border-border/50">
+            <CardHeader>
+              <CardTitle>Recommended Roles</CardTitle>
+              <CardDescription>
+                Distribution of job roles the AI recommends based on your resume content.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="h-[320px]">
+              <RecommendedRolesChart data={data.recommended_roles} />
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Page Header ───────────────────────────────────────────────────────────────
+
+function PageHeader() {
+  return (
+    <div>
+      <h2 className="text-3xl font-bold tracking-tight">Resume Analytics</h2>
+      <p className="mt-1 text-muted-foreground">
+        Real-time insights powered by your resume analysis history.
+      </p>
     </div>
   );
 }

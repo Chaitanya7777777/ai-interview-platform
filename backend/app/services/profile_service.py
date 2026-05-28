@@ -51,3 +51,26 @@ async def get_or_create_profile(session: AsyncSession, supabase_user: SupabaseUs
 
     profile = await create_profile(session, supabase_user.user_id, email=email, full_name=full_name, avatar_url=avatar_url)
     return profile
+
+
+async def update_profile(
+    session: AsyncSession,
+    profile_id,
+    *,
+    full_name: str | None = None,
+    avatar_url: str | None = None,
+) -> Profile:
+    """Apply partial updates to an existing Profile row and flush."""
+    from sqlalchemy import select
+    stmt = select(Profile).where(Profile.id == profile_id)
+    result = await session.execute(stmt)
+    profile = result.scalars().first()
+    if not profile:
+        raise ValueError(f"Profile {profile_id} not found.")
+    if full_name is not None:
+        profile.full_name = full_name
+    if avatar_url is not None:
+        profile.avatar_url = avatar_url
+    await session.flush()
+    return profile
+

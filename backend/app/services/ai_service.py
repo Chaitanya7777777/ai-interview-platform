@@ -17,9 +17,9 @@ Responsibilities
 AI flow for resume analysis
 ----------------------------
 1. load_prompt_template("resume_analysis.txt")   → prompt text from file
-2. .format(resume_text=...)                       → inject resume content
+2. _safe_format(template, ...)                    → inject user content safely
 3. asyncio.to_thread(_generate_text_sync)         → call Groq (non-blocking)
-4. _extract_json()                                → strip code fences
+4. clean_json_response()                          → strip code fences + prose
 5. ResumeAnalysisResponse.model_validate_json()   → Pydantic validation
 6. On ValidationError → return _fallback_analysis() with HTTP 200 + warning
 7. On timeout / Groq error → raise HTTP 503
@@ -42,6 +42,7 @@ from app.core.config import settings
 from app.schemas.ai import (
     InterviewFeedbackResponse,
     InterviewQuestionSet,
+    QuestionEvaluationResponse,
     ResumeAnalysisResponse,
 )
 from app.utils.prompt_loader import load_prompt_template
@@ -52,6 +53,54 @@ T = TypeVar("T", bound=BaseModel)
 
 # How long (seconds) to wait for a Groq response before giving up.
 GROQ_TIMEOUT_SECONDS: float = 60.0
+
+
+# ── Module-level reusable helper ──────────────────────────────────────────────
+
+def clean_json_response(text: str) -> str:
+    """
+    Robustly extract a JSON object from a raw LLM response.
+
+    Handles all common Groq/LLM output patterns:
+      1. Clean JSON:               { ... }
+      2. Markdown fenced:          ```json\n{ ... }\n```
+      3. JSON inside prose:        "Here is the result:\n{ ... }"
+      4. Trailing explanation:     { ... }\nHope this helps!
+      5. Nested/double fences:     ```\n```json\n{ ... }\n```\n```
+
+    Returns the isolated JSON object string, ready for json.loads().
+    """
+    if not text or not text.strip():
+        return "{}"
+
+    stripped = text.strip()
+
+    # ── Step 1: Remove ALL markdown code fences ──────────────────────────────
+    # Pattern matches opening ```json, ```JSON, ``` and closing ```
+    # We replace them with empty string to expose the raw JSON.
+    if "```" in stripped:
+        # Remove opening fence with optional language specifier (```json, ```JSON, etc.)
+        stripped = re.sub(r"```[a-zA-Z]*\s*", "", stripped)
+        # Remove any remaining bare closing fence markers
+        stripped = stripped.replace("```", "")
+        stripped = stripped.strip()
+
+    # ── Step 2: Isolate the outermost JSON object { ... } ────────────────────
+    # This handles preamble prose ("Here is your JSON:") and
+    # trailing prose ("I hope this helps!").
+    start = stripped.find("{")
+    if start == -1:
+        # No JSON object found — return as-is and let json.loads raise a clear error
+        logger.warning("clean_json_response: no '{' found in AI response")
+        return stripped.strip()
+
+    # Walk backward from the end to find the last closing brace
+    end = stripped.rfind("}")
+    if end == -1 or end < start:
+        logger.warning("clean_json_response: no matching '}' found in AI response")
+        return stripped.strip()
+
+    return stripped[start : end + 1].strip()
 
 
 class AIService:
@@ -84,22 +133,11 @@ class AIService:
     @staticmethod
     def _extract_json(text: str) -> str:
         """
-        Strip markdown code fences that Groq sometimes wraps around JSON.
+        Delegate to the module-level clean_json_response() helper.
 
-        Handles patterns like:
-            ```json { ... } ```
-            ``` { ... } ```
-            { ... }   ← already clean, returned as-is
+        Kept for backward compatibility with any internal callers.
         """
-        stripped = text.strip()
-
-        if stripped.startswith("```"):
-            # Remove opening fence (```json or ```)
-            stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
-            # Remove closing fence
-            stripped = re.sub(r"\s*```$", "", stripped)
-
-        return stripped.strip()
+        return clean_json_response(text)
 
     # ── Private: validation ───────────────────────────────────────────────────
 
@@ -108,11 +146,81 @@ class AIService:
         """
         Parse and validate the raw Groq response text against a Pydantic schema.
 
+        Structured debug logging is emitted at each stage so the exact failure
+        point is always visible in server logs.
+
         Raises ValidationError if the JSON does not match the schema.
         Raises json.JSONDecodeError if the text is not valid JSON at all.
         """
+        # ── DEBUG: log raw AI response ────────────────────────────────────────
+        logger.debug(
+            "[AI DEBUG] Raw response for schema=%s (first 800 chars):\n%s",
+            schema.__name__,
+            raw_text[:800],
+        )
+
         cleaned = AIService._extract_json(raw_text)
-        return schema.model_validate_json(cleaned)
+
+        # ── DEBUG: log cleaned response ───────────────────────────────────────
+        logger.debug(
+            "[AI DEBUG] Cleaned JSON for schema=%s (first 800 chars):\n%s",
+            schema.__name__,
+            cleaned[:800],
+        )
+
+        # ── Step 1: Validate JSON syntax ──────────────────────────────────────
+        try:
+            parsed_dict = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            logger.error(
+                "[AI ERROR] JSON parse failed for schema=%s\n"
+                "  JSONDecodeError: %s\n"
+                "  Raw text   (first 500): %s\n"
+                "  Cleaned text (first 500): %s",
+                schema.__name__,
+                exc,
+                raw_text[:500],
+                cleaned[:500],
+            )
+            raise
+
+        # ── DEBUG: log parsed dict keys ───────────────────────────────────────
+        logger.debug(
+            "[AI DEBUG] Parsed JSON keys for schema=%s: %s",
+            schema.__name__,
+            list(parsed_dict.keys()) if isinstance(parsed_dict, dict) else type(parsed_dict).__name__,
+        )
+
+        # ── Step 2: Validate against Pydantic schema ──────────────────────────
+        try:
+            return schema.model_validate(parsed_dict)
+        except ValidationError as exc:
+            logger.error(
+                "[AI ERROR] Pydantic validation failed for schema=%s\n"
+                "  ValidationError: %s\n"
+                "  Parsed dict: %s",
+                schema.__name__,
+                exc,
+                str(parsed_dict)[:500],
+            )
+            raise
+
+    # ── Private: safe prompt formatting ──────────────────────────────────────
+
+    @staticmethod
+    def _safe_format(template: str, **kwargs: str) -> str:
+        """
+        Format a prompt template, safely escaping any literal { } in the values
+        so they don't interfere with str.format().
+
+        Use this when injecting user content (resume text, answers) that may
+        contain curly braces.
+        """
+        safe_kwargs = {
+            k: v.replace("{", "{{").replace("}", "}}") if isinstance(v, str) else v
+            for k, v in kwargs.items()
+        }
+        return template.format(**safe_kwargs)
 
     # ── Private: synchronous Groq call (runs in thread pool) ───────────────
 
@@ -209,9 +317,9 @@ class AIService:
         RuntimeError          : GROQ_API_KEY not configured.
         asyncio.TimeoutError  : Groq took longer than GROQ_TIMEOUT_SECONDS.
         """
-        prompt = load_prompt_template("resume_analysis.txt").format(
-            resume_text=resume_text
-        )
+        template = load_prompt_template("resume_analysis.txt")
+        # Use _safe_format so { } in resume text don't crash str.format()
+        prompt = self._safe_format(template, resume_text=resume_text)
 
         try:
             result = await self._generate_structured_response(
@@ -242,12 +350,76 @@ class AIService:
         role_focus: str,
         difficulty: str,
     ) -> InterviewQuestionSet:
-        prompt = load_prompt_template("interview_questions.txt").format(
-            candidate_context=candidate_context,
-            role_focus=role_focus,
-            difficulty=difficulty,
+        """
+        Generate 7 interview questions tailored to the candidate's resume and role.
+
+        Uses _safe_format() so curly braces inside resume text (code snippets,
+        JSON fields, template strings, etc.) do not crash str.format().
+
+        Raises
+        ------
+        ValueError        : AI returned a response that cannot be parsed after retries.
+        RuntimeError      : GROQ_API_KEY not set.
+        asyncio.TimeoutError : Groq took longer than GROQ_TIMEOUT_SECONDS.
+        """
+        template = load_prompt_template("interview_questions.txt")
+
+        # CRITICAL FIX: use _safe_format so { } in resume text don't cause KeyError
+        try:
+            prompt = self._safe_format(
+                template,
+                candidate_context=candidate_context,
+                role_focus=role_focus,
+                difficulty=difficulty,
+            )
+        except KeyError as exc:
+            # This should never happen with _safe_format, but guard defensively
+            logger.error(
+                "[AI ERROR] Prompt formatting failed for interview_questions.txt: %s"
+                " — candidate_context length=%d, role_focus=%r, difficulty=%r",
+                exc,
+                len(candidate_context),
+                role_focus,
+                difficulty,
+            )
+            raise ValueError(
+                f"Failed to build interview question prompt: {exc}. "
+                "This is a server configuration error."
+            ) from exc
+
+        logger.debug(
+            "[AI DEBUG] Interview question prompt built (first 300 chars):\n%s",
+            prompt[:300],
         )
-        return await self._generate_structured_response(prompt, InterviewQuestionSet)
+
+        try:
+            result = await self._generate_structured_response(prompt, InterviewQuestionSet)
+        except (ValidationError, json.JSONDecodeError) as exc:
+            # AI responded but JSON was malformed — log and raise a clean ValueError
+            # so the route can return a meaningful 503 without exposing a traceback.
+            logger.error(
+                "[AI ERROR] InterviewQuestionSet validation failed.\n"
+                "  Error type: %s\n"
+                "  Error: %s",
+                type(exc).__name__,
+                exc,
+            )
+            raise ValueError(
+                f"AI returned malformed interview questions ({type(exc).__name__}). "
+                "Please try again."
+            ) from exc
+
+        if not result.questions:
+            logger.error("[AI ERROR] InterviewQuestionSet parsed successfully but questions list is empty.")
+            raise ValueError("AI returned an empty question list. Please try again.")
+
+        logger.info(
+            "[AI] Generated %d interview questions for role=%r difficulty=%r",
+            len(result.questions),
+            role_focus,
+            difficulty,
+        )
+        return result
 
     # ── Public: interview feedback ────────────────────────────────────────────
 
@@ -256,10 +428,51 @@ class AIService:
         transcript: list[dict[str, str]],
     ) -> InterviewFeedbackResponse:
         transcript_json = json.dumps(transcript, ensure_ascii=False, indent=2)
-        prompt = load_prompt_template("interview_feedback.txt").format(
-            transcript=transcript_json
-        )
+        template = load_prompt_template("interview_feedback.txt")
+        # Use _safe_format so { } in user answers don't crash str.format()
+        prompt = self._safe_format(template, transcript=transcript_json)
         return await self._generate_structured_response(prompt, InterviewFeedbackResponse)
+
+    # ── Public: per-question evaluation ──────────────────────────────────────
+
+    async def evaluate_question_answer(
+        self,
+        question: str,
+        category: str,
+        user_answer: str,
+        expected_answer_points: list[str],
+    ) -> QuestionEvaluationResponse:
+        """
+        Score a single interview answer and return structured AI feedback.
+
+        Parameters
+        ----------
+        question                : The interview question text.
+        category                : Question category (technical|behavioral|situational).
+        user_answer             : The candidate's answer text.
+        expected_answer_points  : AI-suggested answer points from question generation.
+
+        Returns
+        -------
+        QuestionEvaluationResponse with score 1-10, feedback, ideal_answer,
+        and improvement_suggestions.
+
+        Raises
+        ------
+        ValidationError         : AI response doesn't match schema.
+        asyncio.TimeoutError    : Groq took too long.
+        """
+        points_text = "\n".join(f"- {p}" for p in expected_answer_points)
+        template = load_prompt_template("question_evaluation.txt")
+        # Use _safe_format so { } in user answers/questions don't crash str.format()
+        prompt = self._safe_format(
+            template,
+            question=question,
+            category=category,
+            user_answer=user_answer,
+            expected_answer_points=points_text,
+        )
+        return await self._generate_structured_response(prompt, QuestionEvaluationResponse)
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
