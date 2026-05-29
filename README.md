@@ -51,6 +51,24 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 | Role recommendations | Suggests roles aligned with the resume profile | Helps users target the right jobs |
 | Improvement suggestions | Returns practical resume recommendations | Converts analysis into next steps |
 
+### Mock Interview
+
+| Capability | What it does | Why it matters |
+|---|---|---|
+| Resume-linked interview generation | Builds interview questions from a selected analyzed resume | Keeps interview practice aligned with profile and target role |
+| Role and difficulty controls | Lets users choose role context and difficulty level | Supports beginner-to-advanced preparation paths |
+| Session-based interview flow | Presents structured question-by-question interview sessions | Creates a realistic and repeatable practice loop |
+| AI interview feedback | Evaluates responses and provides targeted guidance | Helps users improve answer quality over time |
+
+### Dashboard & History
+
+| Capability | What it does | Why it matters |
+|---|---|---|
+| Resume and interview history | Stores and surfaces past analyses and sessions | Enables progress tracking and repeat practice |
+| Score trend visualization | Shows score progression over time | Makes improvement patterns visible |
+| Recommended roles and skill gaps | Aggregates role suggestions and missing skills | Keeps learning priorities clear |
+| Analytics summary cards | Highlights key metrics in one view | Improves decision-making speed for users |
+
 ### AI Features
 
 | Capability | What it does | Why it matters |
@@ -75,10 +93,11 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 | Capability | What it does | Why it matters |
 |---|---|---|
 | Modern App Router UI | Uses Next.js App Router patterns | Keeps the frontend scalable and maintainable |
-| Responsive dark interface | Adapts across desktop and mobile | Improves readability and polish |
+| Responsive dashboard interface | Adapts across desktop and mobile | Improves usability and polish |
 | Drag-and-drop uploads | Streamlines resume submission | Lowers friction in the primary workflow |
 | Toast notifications | Surfaces state changes and results | Makes feedback visible and immediate |
 | Protected dashboard experience | Keeps the app feel cohesive after login | Supports a production SaaS experience |
+| Multi-step interview setup flow | Guides users from resume selection to interview launch | Reduces setup errors and ambiguity |
 
 ---
 
@@ -234,7 +253,7 @@ This flow keeps the system modular and easier to debug while preserving a reliab
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-interview-platform.git
+git clone https://github.com/Chaitanya7777777/ai-interview-platform.git
 cd ai-interview-platform
 ```
 
@@ -457,13 +476,13 @@ Use this header for protected backend routes that require a verified user sessio
 
 ## Roadmap
 
-- [ ] AI Mock Interviews
+- [x] AI Mock Interviews
 - [ ] Real-time voice interviews
 - [ ] AI answer evaluation
 - [ ] Resume ATS optimization
 - [ ] Resume templates
 - [ ] AI-generated cover letters
-- [ ] User analytics dashboard
+- [x] User analytics dashboard
 - [ ] Subscription system
 - [ ] Team/company mode
 
