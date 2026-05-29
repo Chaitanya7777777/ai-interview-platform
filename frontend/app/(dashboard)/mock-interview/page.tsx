@@ -110,7 +110,7 @@ export default function MockInterviewPage() {
             <div className="h-px flex-1 bg-border/40" />
             <Step n={2} done={role.trim().length > 0} label="Role" />
             <div className="h-px flex-1 bg-border/40" />
-            <Step n={3} done done={true} label="Difficulty" />
+            <Step n={3} done={true} label="Difficulty" />
             <div className="h-px flex-1 bg-border/40" />
             <Step n={4} done={canStart} label="Launch" />
           </div>
