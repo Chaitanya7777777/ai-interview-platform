@@ -71,17 +71,33 @@ function Stat({
 }
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
+// Each data point carries a composite string key ("2026-05-28-3") as the
+// XAxis dataKey. This guarantees uniqueness even when the backend stores
+// dates without a time component (all same-day points get identical timestamps).
+// The tooltip reads ts from payload[0].payload.ts and shows only the date.
 
-function ChartTooltip({ active, payload, label }: {
+type ChartPoint = {
+  key: string;  // "YYYY-MM-DD-{index}"  — always unique, used as XAxis dataKey
+  ts:  number;  // epoch ms  — used only for display in tooltip
+  score: number;
+};
+
+function ChartTooltip({ active, payload }: {
   active?: boolean;
-  payload?: { value: number }[];
-  label?: string;
+  payload?: Array<{ value: number; payload: ChartPoint }>;
 }) {
   if (!active || !payload?.length) return null;
+  const { ts, value } = { ts: payload[0].payload.ts, value: payload[0].value };
+  // Show date only — no time (user preference)
+  const dateStr = new Date(ts).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
   return (
     <div className="rounded-lg border border-border/50 bg-popover px-3 py-2 text-sm shadow-sm">
-      <p className="text-muted-foreground text-xs mb-0.5">{label}</p>
-      <p className="font-semibold tabular-nums">{payload[0].value}/100</p>
+      <p className="text-muted-foreground text-xs mb-0.5">{dateStr}</p>
+      <p className="font-semibold tabular-nums">{value}/100</p>
     </div>
   );
 }
@@ -125,10 +141,22 @@ export default function DashboardPage() {
   const analytics = state.status === "success" ? state.analytics : null;
   const recent    = state.status === "success" ? state.recent : [];
 
-  const chartData = analytics?.score_trend.map((p) => ({
-    name: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    score: p.score,
-  })) ?? [];
+  // Build chart data sorted chronologically (day first, then submission order).
+  // Key = "YYYY-MM-DD-{i}" — a composite string guaranteed to be unique per entry.
+  // Recharts builds internal tick keys from the XAxis dataKey value; using a unique
+  // string prevents the "duplicate key" React error even when multiple resumes
+  // are submitted on the same day with identical timestamps (backend stores
+  // date-only, giving all same-day uploads the same epoch ms).
+  const chartData: ChartPoint[] = (
+    analytics?.score_trend
+      .slice()                                             // don't mutate original
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((p, i) => ({
+        key:   `${new Date(p.date).toISOString().slice(0, 10)}-${i}`, // e.g. "2026-05-28-3"
+        ts:    new Date(p.date).getTime(),
+        score: p.score,
+      })) ?? []
+  );
 
   return (
     <div className="space-y-12 fade-in">
@@ -236,11 +264,20 @@ export default function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <XAxis
-                    dataKey="name"
+                    dataKey="key"
+                    type="category"
                     tickLine={false}
                     axisLine={false}
                     tick={{ fontSize: 11, fill: "oklch(0.55 0 0)" }}
                     dy={8}
+                    tickFormatter={(key: string) => {
+                      // key = "2026-05-28-3" — parse just the date portion
+                      const datePart = key.slice(0, 10); // "2026-05-28"
+                      return new Date(datePart + "T12:00:00").toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      });
+                    }}
                   />
                   <YAxis
                     domain={[40, 100]}
