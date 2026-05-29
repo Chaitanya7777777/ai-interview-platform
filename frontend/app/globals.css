@@ -48,6 +48,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Light mode (unused — app is dark) ──────────────────────────────────── */
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -55,7 +56,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.55 0.18 250);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -66,65 +67,187 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --ring: oklch(0.55 0.18 250 / 40%);
+  --chart-1: oklch(0.55 0.18 250);
+  --chart-2: oklch(0.65 0.14 250);
+  --chart-3: oklch(0.75 0.10 250);
+  --chart-4: oklch(0.85 0.06 250);
+  --chart-5: oklch(0.439 0 0);
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.55 0.18 250);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.55 0.18 250 / 40%);
 }
 
+/* ── Dark mode — the core design system ──────────────────────────────────── */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* ── Surface layers ──────────────────────────────────────────────────── */
+  /* bg-background: the absolute base — deepest dark */
+  --background: oklch(0.10 0.005 260);
+  /* bg-card: elevated surfaces — slightly lighter */
+  --card: oklch(0.13 0.005 260);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.14 0.006 260);
+  --popover-foreground: oklch(0.95 0 0);
+
+  --foreground: oklch(0.93 0 0);
+
+  /* ── Accent — single blue used sparingly ─────────────────────────────── */
+  /* oklch(0.60 0.19 251) ≈ Stripe/Linear blue */
+  --primary: oklch(0.62 0.19 251);
+  --primary-foreground: oklch(0.99 0 0);
+
+  /* ── Muted surfaces ──────────────────────────────────────────────────── */
+  --secondary: oklch(0.18 0.006 260);
+  --secondary-foreground: oklch(0.90 0 0);
+  --muted: oklch(0.17 0.005 260);
+  --muted-foreground: oklch(0.55 0 0);
+  --accent: oklch(0.18 0.006 260);
+  --accent-foreground: oklch(0.90 0 0);
+
+  /* ── Semantic ────────────────────────────────────────────────────────── */
+  --destructive: oklch(0.65 0.21 25);
+
+  /* ── Borders — very subtle, not the primary separator mechanism ──────── */
+  --border: oklch(1 0 0 / 7%);
+  --input: oklch(1 0 0 / 9%);
+  --ring: oklch(0.62 0.19 251 / 35%);
+
+  /* ── Chart colors ────────────────────────────────────────────────────── */
+  --chart-1: oklch(0.62 0.19 251);
+  --chart-2: oklch(0.72 0.13 251);
+  --chart-3: oklch(0.82 0.08 251);
+  --chart-4: oklch(0.50 0.14 251);
+  --chart-5: oklch(0.40 0.10 251);
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────── */
+  --sidebar: oklch(0.11 0.005 260);
+  --sidebar-foreground: oklch(0.93 0 0);
+  --sidebar-primary: oklch(0.62 0.19 251);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.17 0.006 260);
+  --sidebar-accent-foreground: oklch(0.93 0 0);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-ring: oklch(0.62 0.19 251 / 35%);
 }
 
+/* ── Base layer ──────────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
+
+  html {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
   body {
     @apply bg-background text-foreground;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
   }
-  html {
-    @apply font-sans;
+
+  /* Typography scale — editorial, confident hierarchy */
+  h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.15;
+  }
+  h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+  }
+  h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+  }
+  h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  p {
+    line-height: 1.65;
+  }
+}
+
+/* ── Utility classes ─────────────────────────────────────────────────────── */
+@layer utilities {
+  /* ── Page wrapper — consistent max-width and padding ─────────────────── */
+  .page-container {
+    @apply w-full max-w-5xl mx-auto space-y-10;
+  }
+
+  /* ── Section separator — replaces card borders ───────────────────────── */
+  .section-divide {
+    @apply border-t border-border/40 pt-8;
+  }
+
+  /* ── Stat number — large numeric display ─────────────────────────────── */
+  .stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+
+  /* ── Score pill — inline score display ───────────────────────────────── */
+  .score-pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums;
+  }
+
+  /* ── Premium card — surfaces with very subtle background ─────────────── */
+  .card-surface {
+    @apply rounded-xl bg-card border border-border/50;
+  }
+
+  /* ── Empty state container ───────────────────────────────────────────── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-3 py-16 text-center;
+  }
+
+  /* ── Subtle label — used above sections ──────────────────────────────── */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-muted-foreground/60;
+  }
+
+  /* ── Fade in animation ───────────────────────────────────────────────── */
+  .fade-in {
+    animation: fadeIn 0.25s ease both;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Hover row — for list items ──────────────────────────────────────── */
+  .hover-row {
+    @apply rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-muted/40 cursor-pointer;
+  }
+
+  /* ── Score colors (semantic, used consistently everywhere) ───────────── */
+  .score-great  { @apply text-emerald-400; }
+  .score-good   { @apply text-amber-400; }
+  .score-poor   { @apply text-red-400; }
+
+  /* ── Focus ring ─────────────────────────────────────────────────────── */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background;
   }
 }

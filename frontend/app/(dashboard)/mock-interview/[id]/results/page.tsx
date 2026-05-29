@@ -2,50 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { interviewService } from "@/services/interview.service";
 import type { InterviewDetail } from "@/types/interview";
 import {
-  Loader2, AlertCircle, Trophy, TrendingUp, Target,
-  Lightbulb, ChevronRight, RotateCcw, CheckCircle2,
+  Loader2, AlertCircle, Trophy, TrendingUp,
+  ChevronRight, RotateCcw, CheckCircle2, Target, Lightbulb,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// ── Score display ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function scoreClass(score: number) {
+  if (score >= 80) return "score-great";
+  if (score >= 60) return "score-good";
+  return "score-poor";
+}
+
+function scoreLabel(score: number) {
+  if (score >= 80) return "Excellent";
+  if (score >= 60) return "Good";
+  if (score >= 40) return "Needs work";
+  return "Keep practicing";
+}
+
+// ── Score circle ──────────────────────────────────────────────────────────────
 
 function ScoreCircle({ score }: { score: number }) {
-  const color =
-    score >= 80 ? "text-green-500 border-green-400" :
-    score >= 60 ? "text-amber-500 border-amber-400" :
-    "text-red-500 border-red-400";
-  const label =
-    score >= 80 ? "Excellent" : score >= 60 ? "Good" : score >= 40 ? "Needs Work" : "Keep Practicing";
+  const color  = score >= 80 ? "text-emerald-400" : score >= 60 ? "text-amber-400" : "text-red-400";
+  const ring   = score >= 80 ? "border-emerald-400/30" : score >= 60 ? "border-amber-400/30" : "border-red-400/30";
+  const label  = scoreLabel(score);
+  const labelC = score >= 80 ? "text-emerald-400" : score >= 60 ? "text-amber-400" : "text-red-400";
+
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className={`flex h-28 w-28 items-center justify-center rounded-full border-4 ${color}`}>
+    <div className="flex flex-col items-center gap-3">
+      <div className={cn("flex h-28 w-28 items-center justify-center rounded-full border-4", ring)}>
         <div className="text-center">
-          <div className="text-3xl font-bold">{score}</div>
-          <div className="text-xs text-muted-foreground">/100</div>
+          <p className={cn("text-4xl font-bold leading-none tabular-nums", color)}>{score}</p>
+          <p className="text-xs text-muted-foreground mt-1">/100</p>
         </div>
       </div>
-      <Badge
-        className={
-          score >= 80 ? "bg-green-500/10 text-green-600 border-green-200" :
-          score >= 60 ? "bg-amber-500/10 text-amber-600 border-amber-200" :
-          "bg-red-500/10 text-red-600 border-red-200"
-        }
-        variant="outline"
-      >
-        {label}
-      </Badge>
+      <span className={cn("text-xs font-semibold uppercase tracking-widest", labelC)}>{label}</span>
     </div>
   );
 }
 
-// ── Per-question result card ──────────────────────────────────────────────────
+// ── Question accordion ────────────────────────────────────────────────────────
 
-function QuestionResult({
+function QuestionRow({
   question,
   index,
 }: {
@@ -54,80 +58,70 @@ function QuestionResult({
 }) {
   const [open, setOpen] = useState(false);
   const score = question.ai_score ?? 0;
-  const scoreColor =
-    score >= 8 ? "text-green-500" : score >= 6 ? "text-amber-500" : "text-red-500";
+  const sc    = score >= 8 ? "score-great" : score >= 6 ? "score-good" : "score-poor";
 
   return (
-    <div className="rounded-xl border border-border/50 overflow-hidden">
-      {/* Header row */}
+    <div className="border-b border-border/30 last:border-0">
       <button
-        className="w-full flex items-center justify-between p-4 hover:bg-muted/20 transition-colors text-left"
+        className="w-full flex items-center gap-4 py-4 text-left hover:bg-muted/20 px-1 rounded transition-colors"
         onClick={() => setOpen((v) => !v)}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-bold">
-            {question.user_answer !== null ? (
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            ) : (
-              index + 1
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium line-clamp-1">{question.question}</p>
-            <p className="text-xs text-muted-foreground capitalize mt-0.5">
-              {question.category} · {question.difficulty}
-            </p>
-          </div>
+        <div className={cn(
+          "h-6 w-6 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold",
+          question.user_answer !== null ? "bg-emerald-400/10" : "bg-muted"
+        )}>
+          {question.user_answer !== null
+            ? <CheckCircle2 size={13} className="text-emerald-400" />
+            : index + 1}
         </div>
-        <div className="flex items-center gap-3 shrink-0 ml-2">
-          <span className={`text-lg font-bold ${scoreColor}`}>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium line-clamp-1">{question.question}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 capitalize">
+            {question.category} · {question.difficulty}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className={cn("text-sm font-bold tabular-nums", sc)}>
             {score > 0 ? `${score}/10` : "—"}
           </span>
           <ChevronRight
-            className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+            size={14}
+            className={cn("text-muted-foreground transition-transform", open && "rotate-90")}
           />
         </div>
       </button>
 
-      {/* Expanded detail */}
       {open && (
-        <div className="border-t px-4 py-4 space-y-3 bg-muted/10">
+        <div className="pb-4 px-1 space-y-3 fade-in">
           {question.user_answer && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                Your Answer
-              </p>
-              <p className="text-sm">{question.user_answer}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 mb-1.5">Your answer</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{question.user_answer}</p>
             </div>
           )}
           {question.ai_feedback && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                AI Feedback
-              </p>
-              <p className="text-sm text-muted-foreground">{question.ai_feedback}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 mb-1.5">AI feedback</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{question.ai_feedback}</p>
             </div>
           )}
           {question.ideal_answer && (
-            <div className="rounded-lg border bg-background p-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-primary mb-1">
-                <Target className="h-3.5 w-3.5" />
-                Ideal Answer
-              </div>
-              <p className="text-sm text-muted-foreground">{question.ideal_answer}</p>
+            <div className="rounded-lg border border-border/30 bg-background/30 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary/60 mb-1.5 flex items-center gap-1.5">
+                <Target size={10} /> Ideal answer
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{question.ideal_answer}</p>
             </div>
           )}
           {question.improvement_suggestions && question.improvement_suggestions.length > 0 && (
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 mb-2">
-                <Lightbulb className="h-3.5 w-3.5" />
-                Suggestions
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 mb-1.5 flex items-center gap-1.5">
+                <Lightbulb size={10} /> Suggestions
+              </p>
               <ul className="space-y-1">
                 {question.improvement_suggestions.map((s: string, i: number) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <ChevronRight className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                    {s}
+                    <ChevronRight size={12} className="text-primary/40 mt-0.5 shrink-0" /> {s}
                   </li>
                 ))}
               </ul>
@@ -139,130 +133,113 @@ function QuestionResult({
   );
 }
 
-// ── Main Results Page ─────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InterviewResultsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
   const [interview, setInterview] = useState<InterviewDetail | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.id) return;
     interviewService
       .getDetail(params.id)
       .then(setInterview)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load results.")
-      )
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load."))
       .finally(() => setLoading(false));
   }, [params.id]);
 
-  if (loading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex h-80 items-center justify-center">
+      <Loader2 size={20} className="animate-spin text-muted-foreground" />
+    </div>
+  );
 
-  if (error || !interview) {
-    return (
-      <div className="flex h-96 flex-col items-center justify-center gap-3">
-        <AlertCircle className="h-10 w-10 text-destructive/70" />
-        <p className="text-sm text-muted-foreground">{error ?? "Results not found."}</p>
-        <Button variant="outline" onClick={() => router.push("/mock-interview")}>
-          Back to Setup
-        </Button>
-      </div>
-    );
-  }
+  if (error || !interview) return (
+    <div className="flex h-80 flex-col items-center justify-center gap-3">
+      <AlertCircle size={32} className="text-destructive/60" />
+      <p className="text-sm text-muted-foreground">{error ?? "Results not found."}</p>
+      <Button variant="outline" size="sm" onClick={() => router.push("/mock-interview")}>
+        Back to setup
+      </Button>
+    </div>
+  );
 
-  const scores = interview.questions
-    .map((q) => q.ai_score)
-    .filter((s): s is number => s !== null);
-
-  const avgQ = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
-  const bestQ = scores.length > 0 ? Math.max(...scores) : null;
-
-  const overallScore = interview.overall_score ?? 0;
+  const scores     = interview.questions.map((q) => q.ai_score).filter((s): s is number => s !== null);
+  const avgQ       = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+  const bestQ      = scores.length > 0 ? Math.max(...scores) : null;
+  const overall    = interview.overall_score ?? 0;
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Interview Results</h2>
-          <p className="mt-1 text-muted-foreground">
+    <div className="max-w-2xl mx-auto space-y-10 fade-in">
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1>Results</h1>
+          <p className="text-muted-foreground text-sm">
             {interview.role} · <span className="capitalize">{interview.difficulty}</span> difficulty
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/mock-interview")}>
-            <RotateCcw className="mr-1.5 h-4 w-4" />
-            New Interview
-          </Button>
-          <Button size="sm" onClick={() => router.push("/history")}>
-            View History
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={() => router.push("/mock-interview")} className="gap-1.5">
+            <RotateCcw size={12} /> New interview
           </Button>
         </div>
       </div>
 
-      {/* ── Score summary ────────────────────────────────────────────────────── */}
-      <Card className="shadow-sm">
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row items-center gap-8">
-            {/* Overall score circle */}
-            <div className="flex flex-col items-center gap-3">
-              <Trophy className="h-5 w-5 text-amber-500" />
-              <ScoreCircle score={overallScore} />
-              <p className="text-xs text-muted-foreground">Overall Score</p>
-            </div>
-
-            {/* Stats */}
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-4 w-full">
-              <div className="rounded-xl bg-muted/30 border p-3 text-center">
-                <div className="text-2xl font-bold">{interview.questions.length}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Questions</div>
-              </div>
-              <div className="rounded-xl bg-muted/30 border p-3 text-center">
-                <div className="text-2xl font-bold flex items-center justify-center gap-1">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  {avgQ}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">Avg / Question</div>
-              </div>
-              <div className="rounded-xl bg-muted/30 border p-3 text-center col-span-2 sm:col-span-1">
-                <div className="text-2xl font-bold text-green-500">
-                  {bestQ !== null ? `${bestQ}/10` : "—"}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">Best Answer</div>
-              </div>
-            </div>
+      {/* ── Score hero ───────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border/40 bg-card px-6 py-8">
+        <div className="flex flex-col sm:flex-row items-center gap-8">
+          {/* Circle */}
+          <div className="flex flex-col items-center gap-2">
+            <Trophy size={16} className="text-amber-400" />
+            <ScoreCircle score={overall} />
+            <p className="text-xs text-muted-foreground">Overall score</p>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ── Per-question breakdown ────────────────────────────────────────────── */}
-      <div>
-        <h3 className="text-lg font-semibold mb-3">Question Breakdown</h3>
-        <div className="space-y-3">
+          {/* Stats */}
+          <div className="flex-1 grid grid-cols-3 gap-4 w-full">
+            {[
+              { label: "Questions",       value: interview.questions.length, icon: null },
+              { label: "Avg / question",  value: avgQ,                       icon: TrendingUp },
+              { label: "Best answer",     value: bestQ !== null ? `${bestQ}/10` : "—", icon: null },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="text-center space-y-1">
+                <p className="text-2xl font-bold tabular-nums">
+                  {Icon ? (
+                    <span className="flex items-center justify-center gap-1">
+                      <Icon size={16} className="text-primary" /> {value}
+                    </span>
+                  ) : value}
+                </p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Question breakdown ────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <p className="section-label">Question breakdown</p>
+        <div>
           {interview.questions.map((q, i) => (
-            <QuestionResult key={q.id} question={q} index={i} />
+            <QuestionRow key={q.id} question={q} index={i} />
           ))}
         </div>
       </div>
 
-      {/* ── CTA ─────────────────────────────────────────────────────────────── */}
+      {/* ── CTA ──────────────────────────────────────────────────────────── */}
       <div className="flex gap-3 pt-2">
-        <Button className="flex-1" onClick={() => router.push("/mock-interview")}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          Practice Again
+        <Button className="flex-1 gap-1.5" onClick={() => router.push("/mock-interview")}>
+          <RotateCcw size={13} /> Practice again
         </Button>
         <Button variant="outline" className="flex-1" onClick={() => router.push("/resume-analysis")}>
-          Improve Resume
+          Improve résumé
         </Button>
       </div>
     </div>

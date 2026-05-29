@@ -70,16 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * signOut:
    * 1. Call supabase.auth.signOut() — clears the session from cookies AND localStorage.
    * 2. Clear local state immediately so the UI reacts without waiting for onAuthStateChange.
-   * 3. Call router.refresh() to re-run the middleware, which will now see no session
-   *    and redirect to /login if currently on a protected page.
-   *
-   * We do NOT call router.replace("/login") here. The middleware handles the redirect
-   * after refresh(). Calling both causes a double navigation.
+   * 3. Navigate to "/" (landing page) — a public route the middleware won't intercept.
+   *    We push to "/" first so the middleware sees a public route on refresh and does
+   *    NOT redirect to /login.
    */
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
+    router.push("/");
     router.refresh();
   }, [router]);
 

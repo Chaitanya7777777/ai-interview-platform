@@ -2,57 +2,69 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { resumeService, ResumeHistoryItem } from "@/services/resume.service";
 import { interviewService } from "@/services/interview.service";
 import {
-  PlayCircle, FileText, Sparkles, Clock, CheckCircle2,
-  ChevronRight, AlertCircle, Loader2,
+  PlayCircle, FileText, AlertCircle, Loader2, ChevronRight, CheckCircle2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Difficulty = "easy" | "medium" | "hard";
 
-const DIFFICULTY_INFO = {
-  easy:   { label: "Easy",   color: "text-green-500",  bg: "bg-green-500/10",  desc: "Entry-level questions, straightforward answers" },
-  medium: { label: "Medium", color: "text-amber-500",  bg: "bg-amber-500/10",  desc: "Mid-level depth, STAR method expected" },
-  hard:   { label: "Hard",   color: "text-red-500",    bg: "bg-red-500/10",    desc: "Senior-level, deep technical + leadership questions" },
-};
+const DIFFICULTY = {
+  easy:   { label: "Easy",   note: "Entry-level, STAR basics",       accent: "text-emerald-400", border: "border-emerald-400/40", bg: "bg-emerald-400/5" },
+  medium: { label: "Medium", note: "Mid-level, STAR expected",        accent: "text-amber-400",  border: "border-amber-400/40",  bg: "bg-amber-400/5" },
+  hard:   { label: "Hard",   note: "Senior-level, deep technical",   accent: "text-red-400",    border: "border-red-400/40",    bg: "bg-red-400/5" },
+} as const;
+
+const TIPS = [
+  "Use the STAR method for behavioral questions.",
+  "Mention specific tools, technologies, or metrics.",
+  "2 – 4 sentences per answer is plenty.",
+  "Review AI ideal answers to learn after each question.",
+];
+
+// ── Step indicator ────────────────────────────────────────────────────────────
+
+function Step({ n, done, label }: { n: number; done: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className={cn(
+        "h-5 w-5 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors",
+        done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+      )}>
+        {done ? <CheckCircle2 size={12} /> : n}
+      </div>
+      <span className={cn("text-xs font-medium", done ? "text-foreground" : "text-muted-foreground")}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export default function MockInterviewPage() {
   const router = useRouter();
 
-  // Form state
   const [role, setRole]             = useState("Software Engineer");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
-  // null = nothing selected; user must pick explicitly
   const [resumeId, setResumeId]     = useState<string | null>(null);
-
-  // Data state
   const [resumes, setResumes]       = useState<ResumeHistoryItem[]>([]);
   const [loadingResumes, setLoadingResumes] = useState(true);
   const [resumeError, setResumeError]       = useState<string | null>(null);
-
-  // Submit state
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  // Load analysed resumes — no auto-selection; user must pick explicitly
   useEffect(() => {
     setLoadingResumes(true);
     resumeService
       .getHistory({ page: 1, pageSize: 20 })
       .then((page) => {
-        const analysed = page.items.filter((r) => r.status === "analysed");
-        setResumes(analysed);
-        // Intentionally NOT auto-selecting any resume.
-        // resumeId stays null until the user makes an explicit choice.
+        setResumes(page.items.filter((r) => r.status === "analysed"));
       })
-      .catch(() => setResumeError("Could not load your resumes."))
+      .catch(() => setResumeError("Could not load your résumés."))
       .finally(() => setLoadingResumes(false));
   }, []);
 
@@ -68,207 +80,199 @@ export default function MockInterviewPage() {
       });
       router.push(`/mock-interview/${session.interview_id}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to generate interview.";
-      setGenerateError(msg);
+      setGenerateError(err instanceof Error ? err.message : "Failed to generate interview.");
       setGenerating(false);
     }
   };
 
-  const diffInfo = DIFFICULTY_INFO[difficulty];
+  const sel = resumes.find((r) => r.id === resumeId);
+  const canStart = !!resumeId && role.trim().length > 0;
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Mock Interview</h2>
-        <p className="mt-1 text-muted-foreground">
-          AI-powered interview questions tailored to your resume and target role.
+    <div className="space-y-10 fade-in">
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="space-y-1.5 max-w-lg">
+        <h1>Mock Interview</h1>
+        <p className="text-muted-foreground text-base">
+          AI-powered questions tailored to your résumé and target role.
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-5">
-        {/* ── Setup Card ────────────────────────────────────────────────────── */}
-        <Card className="md:col-span-3 shadow-sm">
-          <CardHeader>
-            <CardTitle>Interview Setup</CardTitle>
-            <CardDescription>
-              Choose your resume and target role to generate personalised questions.
-            </CardDescription>
-          </CardHeader>
+      <div className="grid gap-10 lg:grid-cols-5">
 
-          <CardContent className="space-y-5">
-            {/* Resume select */}
-            <div className="space-y-2">
-              <Label>Your Resume</Label>
-              {loadingResumes ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground h-10">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading resumes…
-                </div>
-              ) : resumeError ? (
-                <p className="text-sm text-destructive">{resumeError}</p>
-              ) : resumes.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border/60 bg-muted/10 p-4 text-sm text-muted-foreground text-center">
-                  No analysed resumes found.{" "}
-                  <a href="/resume-analysis" className="text-primary underline underline-offset-2">
-                    Upload one first →
-                  </a>
-                </div>
-              ) : (
-                <>
-                  {/* Selected resume preview card — shown above the trigger only when a selection has been made */}
-                  {resumeId && (() => {
-                    const sel = resumes.find((r) => r.id === resumeId);
-                    return sel ? (
-                      <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                        <FileText className="h-4 w-4 text-primary shrink-0" />
-                        <span className="truncate font-medium flex-1">{sel.file_name}</span>
-                        {sel.analysis_result?.overall_score !== undefined && (
-                          <Badge variant="secondary" className="text-xs shrink-0">
-                            {sel.analysis_result.overall_score}/100
-                          </Badge>
-                        )}
-                      </div>
-                    ) : null;
-                  })()}
-                  {/* Pass empty string when null so Radix shows the placeholder text */}
-                  <Select value={resumeId ?? ""} onValueChange={(v) => v && setResumeId(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a resume" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resumes.map((r) => (
-                        /* Plain text child — required for SelectValue in trigger to show label */
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.file_name}{r.analysis_result?.overall_score !== undefined ? ` · ${r.analysis_result.overall_score}/100` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {/* Helper text — only visible before the user picks a resume */}
-                  {!resumeId && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Choose a resume to generate interview questions.
-                    </p>
-                  )}
-                </>
-              )}
+        {/* ── Setup panel ─────────────────────────────────────────────────── */}
+        <div className="lg:col-span-3 space-y-8">
+
+          {/* Progress steps */}
+          <div className="flex items-center gap-6">
+            <Step n={1} done={!!resumeId} label="Résumé" />
+            <div className="h-px flex-1 bg-border/40" />
+            <Step n={2} done={role.trim().length > 0} label="Role" />
+            <div className="h-px flex-1 bg-border/40" />
+            <Step n={3} done done={true} label="Difficulty" />
+            <div className="h-px flex-1 bg-border/40" />
+            <Step n={4} done={canStart} label="Launch" />
+          </div>
+
+          {/* Step 1 — Resume */}
+          <div className="space-y-3">
+            <div>
+              <p className="section-label">Step 1</p>
+              <h3 className="mt-0.5">Select your résumé</h3>
             </div>
 
-            {/* Target role */}
-            <div className="space-y-2">
-              <Label>Target Role</Label>
-              <Input
-                placeholder="e.g. Frontend Engineer, Data Scientist"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              />
-            </div>
-
-            {/* Difficulty */}
-            <div className="space-y-2">
-              <Label>Difficulty</Label>
-              <div className="grid grid-cols-3 gap-3">
-                {(["easy", "medium", "hard"] as Difficulty[]).map((d) => {
-                  const info = DIFFICULTY_INFO[d];
-                  const selected = difficulty === d;
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => setDifficulty(d)}
-                      className={`rounded-xl border p-3 text-left transition-all ${
-                        selected
-                          ? `border-primary bg-primary/5 ring-1 ring-primary`
-                          : "border-border hover:border-primary/40 hover:bg-muted/30"
-                      }`}
-                    >
-                      <div className={`text-sm font-semibold ${info.color}`}>
-                        {info.label}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground leading-tight">
-                        {info.desc}
-                      </div>
-                    </button>
-                  );
-                })}
+            {loadingResumes ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground h-10">
+                <Loader2 size={14} className="animate-spin" /> Loading résumés…
               </div>
-            </div>
+            ) : resumeError ? (
+              <p className="text-sm text-destructive">{resumeError}</p>
+            ) : resumes.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/50 bg-muted/10 p-5 text-center text-sm text-muted-foreground">
+                No analysed résumés found.{" "}
+                <a href="/resume-analysis" className="text-primary hover:opacity-80 underline underline-offset-2">
+                  Upload one →
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Select value={resumeId ?? ""} onValueChange={(v) => v && setResumeId(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a résumé" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resumes.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.file_name}
+                        {r.analysis_result?.overall_score !== undefined
+                          ? ` · ${r.analysis_result.overall_score}/100`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            {/* Error banner */}
-            {generateError && (
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                {generateError}
+                {sel && (
+                  <div className="flex items-center gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2.5 text-sm">
+                    <FileText size={14} className="text-primary shrink-0" />
+                    <span className="flex-1 truncate font-medium text-xs">{sel.file_name}</span>
+                    {sel.analysis_result?.overall_score !== undefined && (
+                      <span className="text-xs font-semibold tabular-nums text-emerald-400">
+                        {sel.analysis_result.overall_score}/100
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {!resumeId && (
+                  <p className="text-xs text-muted-foreground">
+                    Choose a résumé — interview questions will be tailored to it.
+                  </p>
+                )}
               </div>
             )}
-          </CardContent>
+          </div>
 
-          <CardFooter>
-            <Button
-              className="w-full h-12 text-base"
-              disabled={!resumeId || !role.trim() || generating}
-              onClick={handleStart}
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Generating questions…
-                </>
-              ) : (
-                <>
-                  <PlayCircle className="mr-2 h-5 w-5" />
-                  Start Interview
-                </>
-              )}
-            </Button>
-          </CardFooter>
-        </Card>
+          {/* Step 2 — Role */}
+          <div className="space-y-3">
+            <div>
+              <p className="section-label">Step 2</p>
+              <h3 className="mt-0.5">Target role</h3>
+            </div>
+            <Input
+              placeholder="e.g. Frontend Engineer, Data Scientist"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="h-11"
+            />
+          </div>
 
-        {/* ── Info Sidebar ──────────────────────────────────────────────────── */}
-        <div className="md:col-span-2 space-y-4">
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                What to expect
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
+          {/* Step 3 — Difficulty */}
+          <div className="space-y-3">
+            <div>
+              <p className="section-label">Step 3</p>
+              <h3 className="mt-0.5">Difficulty</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {(["easy", "medium", "hard"] as Difficulty[]).map((d) => {
+                const info = DIFFICULTY[d];
+                const active = difficulty === d;
+                return (
+                  <button
+                    key={d}
+                    onClick={() => setDifficulty(d)}
+                    className={cn(
+                      "rounded-xl border p-4 text-left transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                      active
+                        ? `${info.border} ${info.bg} ring-1 ring-inset ${info.border}`
+                        : "border-border/50 hover:border-border hover:bg-muted/20"
+                    )}
+                  >
+                    <p className={cn("text-sm font-semibold", active ? info.accent : "text-foreground")}>
+                      {info.label}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground leading-snug">{info.note}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Error */}
+          {generateError && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              {generateError}
+            </div>
+          )}
+
+          {/* CTA */}
+          <Button
+            className="w-full h-12 text-base font-medium gap-2"
+            disabled={!canStart || generating}
+            onClick={handleStart}
+            id="start-interview-btn"
+          >
+            {generating ? (
+              <><Loader2 size={16} className="animate-spin" /> Generating questions…</>
+            ) : (
+              <><PlayCircle size={16} /> Start Interview</>
+            )}
+          </Button>
+        </div>
+
+        {/* ── Info panel ──────────────────────────────────────────────────── */}
+        <div className="lg:col-span-2 space-y-8">
+
+          <div className="space-y-3">
+            <p className="section-label">What to expect</p>
+            <div className="space-y-0">
               {[
-                { icon: FileText, text: "7 questions tailored to your resume and target role" },
-                { icon: Sparkles, text: "Mix of technical, behavioral, and situational questions" },
-                { icon: CheckCircle2, text: "Instant AI feedback and score for each answer" },
-                { icon: Clock, text: "Takes about 15–25 minutes to complete" },
-              ].map(({ icon: Icon, text }, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <Icon className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <span className="text-muted-foreground">{text}</span>
+                "7 questions tailored to your résumé and role",
+                "Mix of technical, behavioral, and situational",
+                "Instant AI feedback and score per answer",
+                "Takes about 15 – 25 minutes",
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3 py-2.5 border-b border-border/30 last:border-0">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground">{item}</p>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" />
-                Tips for best results
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              {[
-                "Use the STAR method for behavioral questions.",
-                "Be specific — mention tech, tools, or metrics.",
-                "It's okay to write 2-4 sentences per answer.",
-                "Review the AI's ideal answers to learn after each question.",
-              ].map((tip, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <ChevronRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <span>{tip}</span>
+          <div className="space-y-3">
+            <p className="section-label">Tips for best results</p>
+            <div className="space-y-0">
+              {TIPS.map((tip, i) => (
+                <div key={i} className="flex items-start gap-3 py-2.5 border-b border-border/30 last:border-0">
+                  <ChevronRight size={13} className="text-primary/50 mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground">{tip}</p>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

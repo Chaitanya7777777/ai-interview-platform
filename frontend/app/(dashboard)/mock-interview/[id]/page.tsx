@@ -2,30 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { interviewService } from "@/services/interview.service";
 import type { InterviewDetail, InterviewQuestion, QuestionEvaluation } from "@/types/interview";
 import {
   Loader2, ChevronRight, CheckCircle2, AlertCircle,
-  Brain, Star, Lightbulb, Target,
+  Star, ArrowRight, Target, Lightbulb,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+function ProgressBar({ answered, total }: { answered: number; total: number }) {
+  const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-xs text-muted-foreground">
-        <span>Question {Math.min(current + 1, total)} of {total}</span>
-        <span>{pct}% complete</span>
+        <span>{answered} of {total} answered</span>
+        <span>{pct}%</span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className="h-full rounded-full bg-primary transition-all duration-500"
+          className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -33,18 +32,11 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
   );
 }
 
-// ── Category badge ────────────────────────────────────────────────────────────
+// ── Category pill ─────────────────────────────────────────────────────────────
 
-const CATEGORY_COLORS: Record<string, string> = {
-  technical:   "bg-blue-500/10 text-blue-600 border-blue-200",
-  behavioral:  "bg-purple-500/10 text-purple-600 border-purple-200",
-  situational: "bg-amber-500/10 text-amber-600 border-amber-200",
-};
-
-function CategoryBadge({ category }: { category: string }) {
-  const cls = CATEGORY_COLORS[category.toLowerCase()] ?? "bg-muted text-muted-foreground";
+function CategoryPill({ category }: { category: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${cls}`}>
+    <span className="inline-flex items-center rounded-full border border-border/50 bg-muted/40 px-2.5 py-0.5 text-xs font-medium capitalize text-muted-foreground">
       {category}
     </span>
   );
@@ -53,51 +45,48 @@ function CategoryBadge({ category }: { category: string }) {
 // ── Score ring ────────────────────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
-  const color =
-    score >= 8 ? "text-green-500" : score >= 6 ? "text-amber-500" : "text-red-500";
+  const color = score >= 8 ? "text-emerald-400" : score >= 6 ? "text-amber-400" : "text-red-400";
+  const ring  = score >= 8 ? "border-emerald-400/30" : score >= 6 ? "border-amber-400/30" : "border-red-400/30";
   return (
-    <div className={`flex h-16 w-16 items-center justify-center rounded-full border-4 ${
-      score >= 8 ? "border-green-500/30" : score >= 6 ? "border-amber-500/30" : "border-red-500/30"
-    }`}>
-      <span className={`text-xl font-bold ${color}`}>{score}</span>
-      <span className="text-xs text-muted-foreground">/10</span>
+    <div className={cn("flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2", ring)}>
+      <span className={cn("text-lg font-bold leading-none tabular-nums", color)}>{score}</span>
     </div>
   );
 }
 
-// ── Feedback Panel ────────────────────────────────────────────────────────────
+// ── Feedback panel ────────────────────────────────────────────────────────────
 
-function FeedbackPanel({ evaluation }: { evaluation: QuestionEvaluation }) {
+function FeedbackPanel({ ev }: { ev: QuestionEvaluation }) {
   return (
-    <div className="mt-5 space-y-4 rounded-xl border border-border/50 bg-muted/20 p-4">
-      <div className="flex items-center gap-4">
-        <ScoreRing score={evaluation.score} />
+    <div className="mt-5 space-y-4 rounded-xl border border-border/40 bg-muted/10 p-5 fade-in">
+      <div className="flex items-start gap-4">
+        <ScoreRing score={ev.score} />
         <div>
-          <p className="font-semibold">AI Feedback</p>
-          <p className="text-sm text-muted-foreground">{evaluation.feedback}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 mb-1">AI Feedback</p>
+          <p className="text-sm leading-relaxed">{ev.feedback}</p>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5 text-sm font-medium">
-          <Target className="h-4 w-4 text-primary" />
-          Ideal Answer
+      {ev.ideal_answer && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 flex items-center gap-1.5">
+            <Target size={11} /> Ideal answer
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed rounded-lg border border-border/30 bg-background/40 px-4 py-3">
+            {ev.ideal_answer}
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground leading-relaxed bg-background rounded-lg border p-3">
-          {evaluation.ideal_answer}
-        </p>
-      </div>
+      )}
 
-      {evaluation.improvement_suggestions.length > 0 && (
+      {ev.improvement_suggestions.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-sm font-medium">
-            <Lightbulb className="h-4 w-4 text-amber-500" />
-            Improvement Suggestions
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 flex items-center gap-1.5">
+            <Lightbulb size={11} /> Suggestions
+          </p>
           <ul className="space-y-1.5">
-            {evaluation.improvement_suggestions.map((s, i) => (
+            {ev.improvement_suggestions.map((s, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <ChevronRight className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <ChevronRight size={13} className="text-primary/50 mt-0.5 shrink-0" />
                 {s}
               </li>
             ))}
@@ -108,22 +97,20 @@ function FeedbackPanel({ evaluation }: { evaluation: QuestionEvaluation }) {
   );
 }
 
-// ── Main Session Page ─────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InterviewSessionPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
 
-  const [interview, setInterview]   = useState<InterviewDetail | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState<string | null>(null);
-
-  // Current question index (among unanswered)
+  const [interview, setInterview] = useState<InterviewDetail | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [answer, setAnswer]         = useState("");
+  const [answer,     setAnswer]     = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [lastEval, setLastEval]     = useState<QuestionEvaluation | null>(null);
+  const [submitErr,  setSubmitErr]  = useState<string | null>(null);
+  const [lastEval,   setLastEval]   = useState<QuestionEvaluation | null>(null);
 
   useEffect(() => {
     if (!params.id) return;
@@ -131,56 +118,46 @@ export default function InterviewSessionPage() {
       .getDetail(params.id)
       .then((d) => {
         setInterview(d);
-        // Start from first unanswered question
-        const firstUnanswered = d.questions.findIndex((q) => q.user_answer === null);
-        setCurrentIdx(firstUnanswered >= 0 ? firstUnanswered : 0);
+        const first = d.questions.findIndex((q) => q.user_answer === null);
+        setCurrentIdx(first >= 0 ? first : 0);
       })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load interview.");
-      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load."))
       .finally(() => setLoading(false));
   }, [params.id]);
 
-  if (loading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="text-center space-y-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading your interview…</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex h-80 items-center justify-center">
+      <Loader2 size={20} className="animate-spin text-muted-foreground" />
+    </div>
+  );
 
-  if (error || !interview) {
-    return (
-      <div className="flex h-96 flex-col items-center justify-center gap-3">
-        <AlertCircle className="h-10 w-10 text-destructive/70" />
-        <p className="text-sm text-muted-foreground">{error ?? "Interview not found."}</p>
-        <Button variant="outline" onClick={() => router.push("/mock-interview")}>
-          Back to Setup
-        </Button>
-      </div>
-    );
-  }
+  if (error || !interview) return (
+    <div className="flex h-80 flex-col items-center justify-center gap-3 text-center">
+      <AlertCircle size={32} className="text-destructive/60" />
+      <p className="text-sm text-muted-foreground">{error ?? "Interview not found."}</p>
+      <Button variant="outline" size="sm" onClick={() => router.push("/mock-interview")}>
+        Back to setup
+      </Button>
+    </div>
+  );
 
   const questions = interview.questions;
   const answeredCount = questions.filter((q) => q.user_answer !== null).length;
   const currentQ: InterviewQuestion | undefined = questions[currentIdx];
+  const allAnswered = answeredCount === questions.length;
+  const isAnswered = currentQ?.user_answer !== null;
 
   const handleSubmit = async () => {
     if (!answer.trim() || !currentQ) return;
     setSubmitting(true);
-    setSubmitError(null);
+    setSubmitErr(null);
     setLastEval(null);
     try {
-      const evaluation = await interviewService.evaluateAnswer(interview.id, {
+      const ev = await interviewService.evaluateAnswer(interview.id, {
         question_id: currentQ.id,
         answer: answer.trim(),
       });
-      setLastEval(evaluation);
-
-      // Update local state so answered count is correct
+      setLastEval(ev);
       setInterview((prev) => {
         if (!prev) return prev;
         return {
@@ -190,181 +167,138 @@ export default function InterviewSessionPage() {
           ),
         };
       });
-
-      if (evaluation.interview_complete) {
-        // Small delay to let user read the last feedback
-        setTimeout(() => router.push(`/mock-interview/${interview.id}/results`), 2500);
+      if (ev.interview_complete) {
+        setTimeout(() => router.push(`/mock-interview/${interview.id}/results`), 2400);
       }
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : "Submission failed. Please try again.");
+      setSubmitErr(err instanceof Error ? err.message : "Submission failed.");
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleNext = () => {
-    const nextIdx = questions.findIndex(
-      (q, i) => i > currentIdx && q.user_answer === null
-    );
-    if (nextIdx >= 0) {
-      setCurrentIdx(nextIdx);
-      setAnswer("");
-      setLastEval(null);
-      setSubmitError(null);
-    }
+    const next = questions.findIndex((q, i) => i > currentIdx && q.user_answer === null);
+    if (next >= 0) { setCurrentIdx(next); setAnswer(""); setLastEval(null); setSubmitErr(null); }
   };
 
-  const isAnswered = currentQ?.user_answer !== null;
-  const allAnswered = answeredCount === questions.length;
-
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{interview.role}</h2>
-          <p className="text-sm text-muted-foreground capitalize">
-            {interview.difficulty} difficulty
-          </p>
-        </div>
-        <Badge
-          variant="outline"
-          className={
+    <div className="max-w-2xl mx-auto space-y-8 fade-in">
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold tracking-tight">{interview.role}</h2>
+          <span className={cn(
+            "text-xs font-medium px-2.5 py-1 rounded-full border",
             interview.status === "completed"
-              ? "border-green-200 bg-green-500/10 text-green-600"
-              : "border-primary/20 bg-primary/5 text-primary"
-          }
-        >
-          {interview.status === "completed" ? "Completed" : "In Progress"}
-        </Badge>
+              ? "border-emerald-400/30 bg-emerald-400/5 text-emerald-400"
+              : "border-primary/30 bg-primary/5 text-primary"
+          )}>
+            {interview.status === "completed" ? "Completed" : "In progress"}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground capitalize">{interview.difficulty} difficulty</p>
       </div>
 
-      {/* ── Progress ─────────────────────────────────────────────────────────── */}
-      <ProgressBar current={answeredCount} total={questions.length} />
+      <ProgressBar answered={answeredCount} total={questions.length} />
 
-      {/* ── Completed state ───────────────────────────────────────────────────── */}
+      {/* ── All answered ─────────────────────────────────────────────────── */}
       {allAnswered ? (
-        <Card className="text-center py-12">
-          <CardContent className="space-y-4">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-            <h3 className="text-xl font-bold">Interview Complete!</h3>
-            <p className="text-muted-foreground">
-              You answered all {questions.length} questions. Redirecting to your results…
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/40 bg-card py-14 text-center fade-in">
+          <CheckCircle2 size={40} className="text-emerald-400" />
+          <div>
+            <p className="text-lg font-semibold">Interview complete</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              You answered all {questions.length} questions.
             </p>
-            <Button onClick={() => router.push(`/mock-interview/${interview.id}/results`)}>
-              View Results →
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          <Button onClick={() => router.push(`/mock-interview/${interview.id}/results`)} className="gap-1.5">
+            View your results <ArrowRight size={14} />
+          </Button>
+        </div>
       ) : currentQ ? (
-        /* ── Active question card ──────────────────────────────────────────── */
-        <Card className="shadow-sm border-border/60">
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                  {currentIdx + 1}
-                </div>
-                <CategoryBadge category={currentQ.category} />
+        /* ── Question ──────────────────────────────────────────────────── */
+        <div className="space-y-5">
+          {/* Question card */}
+          <div className="rounded-2xl border border-border/40 bg-card px-6 py-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                {currentIdx + 1}
               </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Brain className="h-3.5 w-3.5" />
-                <span className="capitalize">{currentQ.difficulty}</span>
-              </div>
+              <CategoryPill category={currentQ.category} />
+              <span className="ml-auto text-xs text-muted-foreground capitalize">{currentQ.difficulty}</span>
             </div>
-            <CardTitle className="text-lg mt-3 leading-snug font-medium">
-              {currentQ.question}
-            </CardTitle>
-          </CardHeader>
+            <p className="text-base font-medium leading-snug">{currentQ.question}</p>
+          </div>
 
-          <CardContent className="space-y-4">
-            {isAnswered ? (
-              /* Already answered — show existing feedback if available */
-              <div className="rounded-lg bg-muted/30 border p-3 text-sm text-muted-foreground">
-                <strong className="text-foreground">Your answer:</strong>{" "}
-                {currentQ.user_answer}
-              </div>
-            ) : (
-              <>
-                <Textarea
-                  placeholder="Type your answer here…"
-                  className="min-h-[140px] resize-none focus-visible:ring-primary"
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  disabled={submitting}
-                />
-
-                {submitError && (
-                  <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    {submitError}
-                  </div>
-                )}
-
-                <Button
-                  className="w-full"
-                  disabled={!answer.trim() || submitting}
-                  onClick={handleSubmit}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Evaluating…
-                    </>
-                  ) : (
-                    <>
-                      <Star className="mr-2 h-4 w-4" />
-                      Submit Answer
-                    </>
-                  )}
-                </Button>
-              </>
-            )}
-
-            {/* Live feedback after submission */}
-            {lastEval && <FeedbackPanel evaluation={lastEval} />}
-
-            {/* Next button (shown after submission, if not last question) */}
-            {lastEval && !lastEval.interview_complete && (
-              <Button variant="outline" className="w-full" onClick={handleNext}>
-                Next Question <ChevronRight className="ml-2 h-4 w-4" />
+          {/* Answer area */}
+          {isAnswered ? (
+            <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 mb-1">Your answer</p>
+              <p className="text-muted-foreground leading-relaxed">{currentQ.user_answer}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Textarea
+                placeholder="Write your answer here…"
+                className="min-h-[140px] resize-none border-border/40 bg-card focus-visible:ring-primary/30 text-sm"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                disabled={submitting}
+              />
+              {submitErr && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                  <AlertCircle size={13} className="shrink-0 mt-0.5" /> {submitErr}
+                </div>
+              )}
+              <Button
+                className="w-full h-11 gap-2 font-medium"
+                disabled={!answer.trim() || submitting}
+                onClick={handleSubmit}
+              >
+                {submitting
+                  ? <><Loader2 size={14} className="animate-spin" /> Evaluating…</>
+                  : <><Star size={14} /> Submit answer</>}
               </Button>
-            )}
+            </div>
+          )}
 
-            {lastEval?.interview_complete && (
-              <p className="text-center text-sm text-muted-foreground animate-pulse">
-                Redirecting to your results…
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          {/* Live feedback */}
+          {lastEval && <FeedbackPanel ev={lastEval} />}
+
+          {lastEval && !lastEval.interview_complete && (
+            <Button variant="outline" className="w-full gap-1.5" onClick={handleNext}>
+              Next question <ChevronRight size={14} />
+            </Button>
+          )}
+          {lastEval?.interview_complete && (
+            <p className="text-center text-xs text-muted-foreground animate-pulse pt-2">
+              Redirecting to results…
+            </p>
+          )}
+        </div>
       ) : null}
 
-      {/* ── Question navigator pills ───────────────────────────────────────── */}
+      {/* ── Question nav pills ────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2 pt-2">
         {questions.map((q, i) => {
-          const answered = q.user_answer !== null;
+          const done   = q.user_answer !== null;
           const active = i === currentIdx;
           return (
             <button
               key={q.id}
-              onClick={() => {
-                if (!answered) {
-                  setCurrentIdx(i);
-                  setAnswer("");
-                  setLastEval(null);
-                  setSubmitError(null);
-                }
-              }}
-              className={`h-8 w-8 rounded-full text-xs font-medium transition-all border ${
-                answered
-                  ? "bg-green-500/10 border-green-200 text-green-600 cursor-default"
+              onClick={() => { if (!done) { setCurrentIdx(i); setAnswer(""); setLastEval(null); setSubmitErr(null); } }}
+              className={cn(
+                "h-7 w-7 rounded-full text-[11px] font-medium transition-all border",
+                done
+                  ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-400 cursor-default"
                   : active
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border hover:border-primary/40 text-muted-foreground"
-              }`}
+                  : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              )}
             >
-              {answered ? "✓" : i + 1}
+              {done ? "✓" : i + 1}
             </button>
           );
         })}

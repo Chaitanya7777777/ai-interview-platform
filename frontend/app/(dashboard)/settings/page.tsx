@@ -1,41 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import {
-  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   User, Bell, Shield, CreditCard, Loader2, CheckCircle2,
-  AlertCircle, Camera, Trash2, LogOut, KeyRound, Mail,
-  Info, Sparkles,
+  AlertCircle, Mail, LogOut, KeyRound, Sparkles,
 } from "lucide-react";
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function getToken(): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  if (!data.session) throw new Error("Not authenticated");
-  return data.session.access_token;
-}
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch(path: string, init?: RequestInit) {
-  const token = await getToken();
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) throw new Error("Not authenticated");
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${data.session.access_token}`,
       ...(init?.headers ?? {}),
     },
   });
@@ -46,315 +35,214 @@ async function apiFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Inline banner ─────────────────────────────────────────────────────────────
 
-function StatusBanner({ type, message }: { type: "success" | "error"; message: string }) {
+function Banner({ type, msg }: { type: "ok" | "err"; msg: string }) {
   return (
-    <div
-      className={`flex items-start gap-2.5 rounded-lg border px-4 py-3 text-sm ${
-        type === "success"
-          ? "border-green-200 bg-green-500/10 text-green-700"
-          : "border-destructive/30 bg-destructive/10 text-destructive"
-      }`}
-    >
-      {type === "success" ? (
-        <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-      ) : (
-        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-      )}
-      <span>{message}</span>
+    <div className={cn(
+      "flex items-start gap-2.5 rounded-lg border px-4 py-3 text-sm",
+      type === "ok"
+        ? "border-emerald-400/20 bg-emerald-400/5 text-emerald-400"
+        : "border-destructive/25 bg-destructive/5 text-destructive"
+    )}>
+      {type === "ok"
+        ? <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+        : <AlertCircle   size={14} className="shrink-0 mt-0.5" />}
+      {msg}
     </div>
   );
 }
 
-// ── Profile Tab ───────────────────────────────────────────────────────────────
+// ── Toggle ────────────────────────────────────────────────────────────────────
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle(): void }) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={on}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+        on ? "bg-primary" : "bg-muted"
+      )}
+    >
+      <span className={cn(
+        "inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200",
+        on ? "translate-x-4" : "translate-x-0"
+      )} />
+    </button>
+  );
+}
+
+// ── Profile tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab() {
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [status, setStatus]       = useState<{ type: "success" | "error"; msg: string } | null>(null);
-
-  const [email, setEmail]         = useState("");
-  const [fullName, setFullName]   = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [status,  setStatus]  = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [email,     setEmail]     = useState("");
+  const [fullName,  setFullName]  = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [initials, setInitials]   = useState("U");
-  const [joinedAt, setJoinedAt]   = useState("");
+  const [initials,  setInitials]  = useState("U");
 
   useEffect(() => {
     (async () => {
       try {
-        const profile = await apiFetch("/api/v1/profile/me");
-        setEmail(profile.email ?? "");
-        setFullName(profile.full_name ?? "");
-        setAvatarUrl(profile.avatar_url ?? "");
-        setJoinedAt(
-          profile.created_at
-            ? new Date(profile.created_at).toLocaleDateString("en-US", {
-                month: "long", day: "numeric", year: "numeric",
-              })
-            : ""
-        );
-        const name: string = profile.full_name ?? profile.email ?? "";
-        setInitials(
-          name
-            .split(" ")
-            .map((w: string) => w[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2) || "U"
-        );
+        const p = await apiFetch("/api/v1/profile/me");
+        setEmail(p.email ?? "");
+        setFullName(p.full_name ?? "");
+        setAvatarUrl(p.avatar_url ?? "");
+        const name: string = p.full_name ?? p.email ?? "";
+        setInitials(name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2) || "U");
       } catch (e: unknown) {
-        setStatus({ type: "error", msg: e instanceof Error ? e.message : "Failed to load profile." });
+        setStatus({ type: "err", msg: e instanceof Error ? e.message : "Failed to load profile." });
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const handleSave = async () => {
+  const save = async () => {
     setSaving(true);
     setStatus(null);
     try {
       const updated = await apiFetch("/api/v1/profile/me", {
         method: "PATCH",
-        body: JSON.stringify({
-          full_name: fullName.trim() || null,
-          avatar_url: avatarUrl.trim() || null,
-        }),
+        body: JSON.stringify({ full_name: fullName.trim() || null, avatar_url: avatarUrl.trim() || null }),
       });
       setFullName(updated.full_name ?? "");
       setAvatarUrl(updated.avatar_url ?? "");
       const name: string = updated.full_name ?? updated.email ?? "";
-      setInitials(
-        name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2) || "U"
-      );
-      setStatus({ type: "success", msg: "Profile saved successfully." });
+      setInitials(name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2) || "U");
+      setStatus({ type: "ok", msg: "Profile updated." });
     } catch (e: unknown) {
-      setStatus({ type: "error", msg: e instanceof Error ? e.message : "Save failed." });
+      setStatus({ type: "err", msg: e instanceof Error ? e.message : "Save failed." });
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-48 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex h-32 items-center justify-center">
+      <Loader2 size={18} className="animate-spin text-muted-foreground" />
+    </div>
+  );
 
   return (
-    <div className="space-y-5">
-      {/* Profile card */}
-      <Card className="shadow-sm border-border/50">
-        <CardHeader>
-          <CardTitle>Profile Information</CardTitle>
-          <CardDescription>Update your display name and avatar URL.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Avatar row */}
-          <div className="flex flex-col sm:flex-row items-center gap-5">
-            <div className="relative group">
-              <Avatar className="h-24 w-24 border-2 border-border ring-2 ring-primary/10">
-                <AvatarImage src={avatarUrl || undefined} alt={fullName || "Avatar"} />
-                <AvatarFallback className="text-2xl font-bold bg-primary/10 text-primary">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="space-y-1 text-center sm:text-left">
-              <p className="font-semibold text-lg">{fullName || "Your Name"}</p>
-              <p className="text-sm text-muted-foreground">{email}</p>
-              {joinedAt && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 justify-center sm:justify-start">
-                  <Info className="h-3 w-3" /> Member since {joinedAt}
-                </p>
-              )}
-            </div>
-          </div>
+    <div className="space-y-8">
+      {/* Avatar + identity */}
+      <div className="flex items-center gap-5">
+        <Avatar className="h-16 w-16 border border-border/50">
+          <AvatarImage src={avatarUrl || undefined} alt={fullName || "Avatar"} />
+          <AvatarFallback className="bg-primary/10 text-primary font-semibold">{initials}</AvatarFallback>
+        </Avatar>
+        <div>
+          <p className="font-semibold text-base leading-none">{fullName || email || "Your profile"}</p>
+          <p className="text-sm text-muted-foreground mt-1">{email}</p>
+        </div>
+      </div>
 
-          {status && <StatusBanner type={status.type} message={status.msg} />}
+      {status && <Banner type={status.type} msg={status.msg} />}
 
-          {/* Fields */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="full-name">Display Name</Label>
-              <Input
-                id="full-name"
-                placeholder="Your full name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="avatar-url">Avatar URL</Label>
-              <Input
-                id="avatar-url"
-                type="url"
-                placeholder="https://example.com/avatar.jpg"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Paste a public image URL. Supports JPG, PNG, WebP.
-              </p>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="email-ro">Email</Label>
-              <Input id="email-ro" type="email" value={email} disabled />
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Mail className="h-3 w-3" />
-                Email is managed by your authentication provider and cannot be changed here.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t px-6 py-4 bg-muted/20 gap-3">
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            {saving ? "Saving…" : "Save Changes"}
-          </Button>
-        </CardFooter>
-      </Card>
+      {/* Fields */}
+      <div className="space-y-5 max-w-md">
+        <div className="space-y-1.5">
+          <Label htmlFor="full-name" className="text-sm">Display name</Label>
+          <Input id="full-name" placeholder="Your full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="avatar-url" className="text-sm">Avatar URL</Label>
+          <Input id="avatar-url" type="url" placeholder="https://…/avatar.jpg" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+          <p className="text-xs text-muted-foreground">Paste a public image URL.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email-ro" className="text-sm">Email</Label>
+          <Input id="email-ro" type="email" value={email} disabled className="opacity-50" />
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Mail size={10} /> Managed by your auth provider.
+          </p>
+        </div>
+      </div>
+
+      <Button onClick={save} disabled={saving} size="sm" className="gap-1.5">
+        {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+        {saving ? "Saving…" : "Save changes"}
+      </Button>
     </div>
   );
 }
 
-// ── Security Tab ──────────────────────────────────────────────────────────────
+// ── Security tab ──────────────────────────────────────────────────────────────
 
 function SecurityTab() {
-  const [sendingReset, setSendingReset] = useState(false);
-  const [resetStatus, setResetStatus]   = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const [signingOut, setSigningOut]     = useState(false);
+  const [sending,  setSending]  = useState(false);
+  const [rStatus,  setRStatus]  = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const handlePasswordReset = async () => {
-    setSendingReset(true);
-    setResetStatus(null);
+  const sendReset = async () => {
+    setSending(true);
+    setRStatus(null);
     try {
       const { data } = await supabase.auth.getSession();
-      const email = data.session?.user?.email;
-      if (!email) throw new Error("Could not determine your email address.");
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const emailAddr = data.session?.user?.email;
+      if (!emailAddr) throw new Error("Could not determine your email.");
+      const { error } = await supabase.auth.resetPasswordForEmail(emailAddr, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
-      setResetStatus({
-        type: "success",
-        msg: `Password reset email sent to ${email}. Check your inbox.`,
-      });
+      setRStatus({ type: "ok", msg: `Reset link sent to ${emailAddr}.` });
     } catch (e: unknown) {
-      setResetStatus({ type: "error", msg: e instanceof Error ? e.message : "Failed to send reset email." });
+      setRStatus({ type: "err", msg: e instanceof Error ? e.message : "Failed to send reset email." });
     } finally {
-      setSendingReset(false);
+      setSending(false);
     }
   };
 
-  const handleSignOutAll = async () => {
+  const signOutAll = async () => {
     setSigningOut(true);
     try {
       await supabase.auth.signOut({ scope: "global" });
-      window.location.href = "/login";
-    } catch {
-      setSigningOut(false);
-    }
+      window.location.href = "/";
+    } catch { setSigningOut(false); }
   };
 
   return (
-    <div className="space-y-5">
-      {/* Password reset */}
-      <Card className="shadow-sm border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" />
-            Password
-          </CardTitle>
-          <CardDescription>
-            Send a password reset link to your registered email address.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {resetStatus && <StatusBanner type={resetStatus.type} message={resetStatus.msg} />}
-          <div className="rounded-xl border border-border/50 bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
-            <p>• A reset link will be sent to your registered email.</p>
-            <p>• The link expires in 1 hour.</p>
-            <p>• You will be signed out of all devices after resetting.</p>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t px-6 py-4 bg-muted/20">
-          <Button
-            variant="outline"
-            onClick={handlePasswordReset}
-            disabled={sendingReset}
-            className="gap-2"
-          >
-            {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-            {sendingReset ? "Sending…" : "Send Reset Email"}
-          </Button>
-        </CardFooter>
-      </Card>
+    <div className="space-y-10 max-w-md">
+      {/* Password */}
+      <div className="space-y-4">
+        <div>
+          <p className="section-label">Password</p>
+          <h3 className="mt-0.5 flex items-center gap-2"><KeyRound size={16} /> Reset password</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            A reset link will be sent to your registered email address.
+          </p>
+        </div>
+        {rStatus && <Banner type={rStatus.type} msg={rStatus.msg} />}
+        <Button variant="outline" size="sm" onClick={sendReset} disabled={sending} className="gap-1.5">
+          {sending ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+          {sending ? "Sending…" : "Send reset email"}
+        </Button>
+      </div>
 
-      {/* Active session */}
-      <Card className="shadow-sm border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LogOut className="h-5 w-5 text-primary" />
-            Sessions
-          </CardTitle>
-          <CardDescription>Sign out from all devices globally.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/20 p-4">
-            <div>
-              <p className="text-sm font-medium">Current Session</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                This device · {typeof navigator !== "undefined" ? navigator.platform : "Unknown"}
-              </p>
-            </div>
-            <Badge variant="outline" className="border-green-200 bg-green-500/10 text-green-600 text-xs">
-              Active
-            </Badge>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t px-6 py-4 bg-muted/20">
-          <Button
-            variant="destructive"
-            onClick={handleSignOutAll}
-            disabled={signingOut}
-            className="gap-2"
-          >
-            {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            {signingOut ? "Signing out…" : "Sign Out All Devices"}
-          </Button>
-        </CardFooter>
-      </Card>
+      {/* Sessions */}
+      <div className="space-y-4 section-divide pt-6">
+        <div>
+          <p className="section-label">Sessions</p>
+          <h3 className="mt-0.5 flex items-center gap-2"><LogOut size={16} /> Sign out everywhere</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Terminates all active sessions across every device.
+          </p>
+        </div>
+        <Button variant="destructive" size="sm" onClick={signOutAll} disabled={signingOut} className="gap-1.5">
+          {signingOut ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />}
+          {signingOut ? "Signing out…" : "Sign out all devices"}
+        </Button>
+      </div>
     </div>
   );
 }
 
-// ── Notifications Tab ─────────────────────────────────────────────────────────
-
-function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-        enabled ? "bg-primary" : "bg-muted"
-      }`}
-      role="switch"
-      aria-checked={enabled}
-    >
-      <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-          enabled ? "translate-x-5" : "translate-x-0"
-        }`}
-      />
-    </button>
-  );
-}
+// ── Notifications tab ─────────────────────────────────────────────────────────
 
 const DEFAULT_PREFS = {
   emailInterviewComplete: true,
@@ -363,164 +251,103 @@ const DEFAULT_PREFS = {
   browserPush:            false,
 };
 
+const NOTIF_ROWS = [
+  { key: "emailInterviewComplete" as const, label: "Interview completed",   desc: "When an AI mock interview session finishes." },
+  { key: "emailWeeklySummary"     as const, label: "Weekly summary",        desc: "A digest of your interview performance." },
+  { key: "emailProductUpdates"    as const, label: "Product updates",        desc: "New features and announcements." },
+  { key: "browserPush"            as const, label: "Browser notifications",  desc: "Real-time alerts while active." },
+];
+
 function NotificationsTab() {
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
-  const [saved, setSaved] = useState(false);
-
-  const toggle = (key: keyof typeof prefs) =>
-    setPrefs((p) => ({ ...p, [key]: !p[key] }));
-
-  const handleSave = () => {
-    // Preferences are local-only for now (no notifications table in DB).
-    // Persist to localStorage so they survive page reload.
-    localStorage.setItem("notif_prefs", JSON.stringify(prefs));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
+  const [saved,  setSaved]  = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("notif_prefs");
-    if (saved) {
-      try { setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(saved) }); } catch {}
-    }
+    const s = localStorage.getItem("notif_prefs");
+    if (s) { try { setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(s) }); } catch {} }
   }, []);
 
-  const rows = [
-    { key: "emailInterviewComplete" as const, label: "Interview completed", desc: "Get notified when an AI mock interview session finishes." },
-    { key: "emailWeeklySummary"     as const, label: "Weekly progress summary", desc: "A weekly digest of your interview performance and resume scores." },
-    { key: "emailProductUpdates"    as const, label: "Product updates", desc: "New features, improvements, and announcements." },
-    { key: "browserPush"            as const, label: "Browser push notifications", desc: "Real-time alerts while you are active on the platform." },
-  ];
+  const save = () => {
+    localStorage.setItem("notif_prefs", JSON.stringify(prefs));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2200);
+  };
 
   return (
-    <Card className="shadow-sm border-border/50">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell className="h-5 w-5 text-primary" />
-          Notification Preferences
-        </CardTitle>
-        <CardDescription>Choose what you want to be notified about.</CardDescription>
-      </CardHeader>
-      <CardContent className="divide-y divide-border/40">
-        {rows.map((row) => (
+    <div className="space-y-8 max-w-md">
+      <div className="divide-y divide-border/30">
+        {NOTIF_ROWS.map((row) => (
           <div key={row.key} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
             <div>
               <p className="text-sm font-medium">{row.label}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
             </div>
-            <Toggle enabled={prefs[row.key]} onToggle={() => toggle(row.key)} />
+            <Toggle on={prefs[row.key]} onToggle={() => setPrefs((p) => ({ ...p, [row.key]: !p[row.key] }))} />
           </div>
         ))}
-      </CardContent>
-      <CardFooter className="border-t px-6 py-4 bg-muted/20 gap-3">
-        <Button onClick={handleSave} className="gap-2">
-          {saved
-            ? <><CheckCircle2 className="h-4 w-4" /> Saved!</>
-            : <><CheckCircle2 className="h-4 w-4" /> Save Preferences</>
-          }
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-// ── Billing Tab ───────────────────────────────────────────────────────────────
-
-function BillingTab() {
-  const features = [
-    "Unlimited AI resume analysis",
-    "Unlimited mock interview sessions",
-    "7 tailored questions per session",
-    "Instant AI feedback & scoring",
-    "Full answer history & results",
-    "Dashboard analytics",
-  ];
-
-  return (
-    <div className="space-y-5">
-      <Card className="shadow-sm border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-primary" />
-            Current Plan
-          </CardTitle>
-          <CardDescription>You are on the free beta plan with full access.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <h3 className="font-bold text-lg">Beta Pro</h3>
-              </div>
-              <Badge className="bg-primary/10 text-primary border-primary/30">
-                Free Access
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              During the beta period, all features are free and unlimited.
-            </p>
-            <ul className="space-y-2">
-              {features.map((f, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t px-6 py-4 bg-muted/20">
-          <Button variant="outline" disabled className="gap-2 opacity-60">
-            <CreditCard className="h-4 w-4" />
-            Manage Billing (coming soon)
-          </Button>
-        </CardFooter>
-      </Card>
-
-      {/* Usage stats from DB (read-only) */}
-      <UsageStats />
+      </div>
+      <Button size="sm" onClick={save} className="gap-1.5">
+        {saved ? <><CheckCircle2 size={13} /> Saved!</> : <><CheckCircle2 size={13} /> Save preferences</>}
+      </Button>
     </div>
   );
 }
 
-function UsageStats() {
-  const [stats, setStats] = useState<{ resumes: number; interviews: number } | null>(null);
+// ── Billing tab ───────────────────────────────────────────────────────────────
 
+function BillingTab() {
+  const [stats, setStats] = useState<{ resumes: number; interviews: number } | null>(null);
   useEffect(() => {
-    (async () => {
-      try {
-        const dash = await apiFetch("/api/v1/dashboard/summary");
-        setStats({
-          resumes:    dash.total_resumes   ?? 0,
-          interviews: dash.total_interviews ?? 0,
-        });
-      } catch {}
-    })();
+    apiFetch("/api/v1/dashboard/summary").then((d) =>
+      setStats({ resumes: d.total_resumes ?? 0, interviews: d.total_interviews ?? 0 })
+    ).catch(() => {});
   }, []);
 
-  if (!stats) return null;
-
   return (
-    <Card className="shadow-sm border-border/50">
-      <CardHeader>
-        <CardTitle className="text-base">Your Usage</CardTitle>
-        <CardDescription>Lifetime activity on your account.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-8 max-w-md">
+      <div className="space-y-4">
+        <div>
+          <p className="section-label">Plan</p>
+          <h3 className="mt-0.5 flex items-center gap-2"><Sparkles size={16} className="text-primary" /> Beta Pro</h3>
+          <p className="text-sm text-muted-foreground mt-1">Free full access during the beta period.</p>
+        </div>
+        <div className="space-y-0">
           {[
-            { label: "Resumes Analysed",   value: stats.resumes },
-            { label: "Interviews Taken",    value: stats.interviews },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border border-border/50 bg-muted/20 p-4 text-center">
-              <div className="text-3xl font-bold text-primary">{value}</div>
-              <div className="text-xs text-muted-foreground mt-1">{label}</div>
+            "Unlimited résumé analysis",
+            "Unlimited mock interview sessions",
+            "7 tailored questions per session",
+            "Instant AI feedback & scoring",
+            "Full results history",
+          ].map((f) => (
+            <div key={f} className="flex items-center gap-3 py-2.5 border-b border-border/30 last:border-0">
+              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+              <p className="text-sm text-muted-foreground">{f}</p>
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {stats && (
+        <div className="space-y-3 section-divide pt-6">
+          <p className="section-label">Your usage</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Résumés analysed",  value: stats.resumes },
+              { label: "Interviews taken",  value: stats.interviews },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-xl border border-border/50 bg-card p-4 text-center">
+                <p className="text-2xl font-bold text-primary">{value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Button variant="outline" size="sm" disabled className="gap-1.5 opacity-50">
+        <CreditCard size={13} /> Manage billing (coming soon)
+      </Button>
+    </div>
   );
 }
 
@@ -528,43 +355,34 @@ function UsageStats() {
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
-        <p className="text-muted-foreground mt-1">Manage your account settings and preferences.</p>
+    <div className="space-y-8 fade-in max-w-2xl">
+      <div className="space-y-1.5">
+        <h1>Settings</h1>
+        <p className="text-muted-foreground text-base">Manage your account and preferences.</p>
       </div>
 
-      <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
-          <TabsTrigger value="profile">
-            <User className="mr-1.5 h-4 w-4" /> Profile
-          </TabsTrigger>
-          <TabsTrigger value="notifications">
-            <Bell className="mr-1.5 h-4 w-4" /> Notifications
-          </TabsTrigger>
-          <TabsTrigger value="security">
-            <Shield className="mr-1.5 h-4 w-4" /> Security
-          </TabsTrigger>
-          <TabsTrigger value="billing">
-            <CreditCard className="mr-1.5 h-4 w-4" /> Billing
-          </TabsTrigger>
+      <Tabs defaultValue="profile">
+        <TabsList className="bg-transparent p-0 gap-0 border-b border-border/40 w-full justify-start rounded-none h-auto mb-8">
+          {[
+            { value: "profile",       icon: User,        label: "Profile" },
+            { value: "notifications", icon: Bell,        label: "Notifications" },
+            { value: "security",      icon: Shield,      label: "Security" },
+            { value: "billing",       icon: CreditCard,  label: "Billing" },
+          ].map(({ value, icon: Icon, label }) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none text-muted-foreground px-4 py-2.5 text-sm font-medium gap-1.5"
+            >
+              <Icon size={14} /> {label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="profile">
-          <ProfileTab />
-        </TabsContent>
-
-        <TabsContent value="notifications">
-          <NotificationsTab />
-        </TabsContent>
-
-        <TabsContent value="security">
-          <SecurityTab />
-        </TabsContent>
-
-        <TabsContent value="billing">
-          <BillingTab />
-        </TabsContent>
+        <TabsContent value="profile"><ProfileTab /></TabsContent>
+        <TabsContent value="notifications"><NotificationsTab /></TabsContent>
+        <TabsContent value="security"><SecurityTab /></TabsContent>
+        <TabsContent value="billing"><BillingTab /></TabsContent>
       </Tabs>
     </div>
   );

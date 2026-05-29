@@ -3,167 +3,199 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  FileText, 
-  MessageSquare, 
-  History, 
-  Settings, 
+import {
+  LayoutDashboard,
+  FileText,
+  MessageSquare,
+  History,
+  Settings,
   LogOut,
   Menu,
   X,
-  Bell,
   Loader2,
+  Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const sidebarLinks = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Resume Analysis", href: "/resume-analysis", icon: FileText },
-  { name: "Mock Interviews", href: "/mock-interview", icon: MessageSquare },
-  { name: "History", href: "/history", icon: History },
-  { name: "Settings", href: "/settings", icon: Settings },
+const NAV = [
+  { name: "Dashboard",       href: "/dashboard",       icon: LayoutDashboard },
+  { name: "Resume Analysis", href: "/resume-analysis",  icon: FileText },
+  { name: "Mock Interviews", href: "/mock-interview",   icon: MessageSquare },
+  { name: "History",         href: "/history",          icon: History },
+  { name: "Settings",        href: "/settings",         icon: Settings },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const { user, signOut } = useAuth();
 
   const handleSignOut = async () => {
     try {
-      setIsSigningOut(true);
+      setSigningOut(true);
       await signOut();
-      toast.success("Signed out successfully.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to sign out.");
+      toast.success("Signed out.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to sign out.");
     } finally {
-      setIsSigningOut(false);
+      setSigningOut(false);
     }
   };
 
-  const avatarFallback = user?.email?.charAt(0)?.toUpperCase() ?? "U";
+  const initials =
+    (user?.user_metadata?.full_name as string | undefined)
+      ?.split(" ")
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) ??
+    user?.email?.charAt(0)?.toUpperCase() ??
+    "U";
+
+  const SidebarContent = () => (
+    <div className="flex h-full flex-col">
+      {/* ── Logo ─────────────────────────────────────────────────────── */}
+      <div className="flex h-16 shrink-0 items-center justify-between px-5">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2.5 group"
+          onClick={() => setMobileOpen(false)}
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-transform group-hover:scale-105">
+            <Zap size={14} strokeWidth={2.5} />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">InterviewAI</span>
+        </Link>
+        {/* Mobile close */}
+        <button
+          className="rounded-md p-1 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={() => setMobileOpen(false)}
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* ── Sign out — top of sidebar ─────────────────────────────────── */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-destructive/8 hover:text-destructive disabled:opacity-50 group"
+        >
+          {signingOut
+            ? <Loader2 size={18} className="shrink-0 animate-spin" />
+            : <LogOut size={18} strokeWidth={1.8} className="shrink-0 transition-colors group-hover:text-destructive" />}
+          {signingOut ? "Signing out…" : "Sign out"}
+        </button>
+      </div>
+
+      {/* ── Divider ───────────────────────────────────────────────────── */}
+      <div className="mx-4 border-t border-border/40 mb-2" />
+
+      {/* ── Nav ──────────────────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-auto px-3 py-1">
+        <div className="space-y-0.5">
+          {NAV.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "group flex items-center gap-3 rounded-md px-3 py-2.5 text-base font-medium transition-all duration-150 outline-none",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground focus-visible:bg-muted/50"
+                )}
+              >
+                <item.icon
+                  size={18}
+                  strokeWidth={active ? 2.2 : 1.8}
+                  className={cn(
+                    "shrink-0 transition-colors",
+                    active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"
+                  )}
+                />
+                {item.name}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* ── User footer ──────────────────────────────────────────────── */}
+      <div className="border-t border-border/40 p-3">
+        <div className="flex items-center gap-3 rounded-md px-2 py-2">
+          <Avatar className="h-8 w-8 shrink-0 text-xs">
+            <AvatarImage
+              src={(user?.user_metadata?.avatar_url as string | undefined) ?? undefined}
+              alt={user?.email ?? "User"}
+            />
+            <AvatarFallback className="bg-primary/15 text-primary text-[11px] font-semibold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium leading-none truncate">
+              {(user?.user_metadata?.full_name as string | undefined) ?? user?.email?.split("@")[0]}
+            </p>
+            <p className="text-xs text-muted-foreground/60 leading-none mt-0.5 truncate">
+              {user?.email}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
-      {/* Mobile Sidebar Overlay */}
-      {isMobileOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
-          onClick={() => setIsMobileOpen(false)}
+      {/* ── Mobile overlay ────────────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform duration-300 md:relative md:translate-x-0",
-        isMobileOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="flex h-16 shrink-0 items-center border-b px-6">
-          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl tracking-tight">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <FileText size={18} />
-            </div>
-            InterviewAI
-          </Link>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="ml-auto md:hidden"
-            onClick={() => setIsMobileOpen(false)}
-          >
-            <X size={20} />
-          </Button>
-        </div>
-        
-        <div className="flex-1 overflow-auto py-4">
-          <nav className="flex flex-col gap-1 px-4">
-            {sidebarLinks.map((link) => {
-              const isActive = pathname.startsWith(link.href);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative group overflow-hidden",
-                    isActive 
-                      ? "bg-primary/10 text-primary" 
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                  onClick={() => setIsMobileOpen(false)}
-                >
-                  {isActive && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" />
-                  )}
-                  <link.icon size={18} className={isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"} />
-                  {link.name}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-        
-        <div className="border-t p-4">
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-3"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-          >
-            {isSigningOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
-            {isSigningOut ? "Signing out..." : "Sign out"}
-          </Button>
-        </div>
+      {/* ── Sidebar ───────────────────────────────────────────────────── */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-64 border-r border-border/40 bg-sidebar transition-transform duration-200 ease-out md:relative md:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <SidebarContent />
       </aside>
 
-      {/* Main Content */}
+      {/* ── Main ──────────────────────────────────────────────────────── */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b px-6 bg-card/50 backdrop-blur-md">
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="md:hidden"
-              onClick={() => setIsMobileOpen(true)}
-            >
-              <Menu size={20} />
-            </Button>
-            <h1 className="text-lg font-semibold capitalize hidden sm:block">
-              {pathname.split("/")[1]?.replace("-", " ") || "Dashboard"}
-            </h1>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="relative rounded-full">
-              <Bell size={20} />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden sm:inline-flex"
-              onClick={handleSignOut}
-              aria-label="Sign out"
-              disabled={isSigningOut}
-            >
-              {isSigningOut ? <Loader2 size={18} className="animate-spin" /> : <LogOut size={18} />}
-            </Button>
-            <Avatar className="h-9 w-9 border border-border">
-              <AvatarImage src={user?.user_metadata?.avatar_url ?? "https://github.com/shadcn.png"} alt={user?.email ?? "User"} />
-              <AvatarFallback>{avatarFallback}</AvatarFallback>
-            </Avatar>
-          </div>
+        {/* Mobile header bar — only visible on small screens */}
+        <header className="flex h-12 shrink-0 items-center border-b border-border/40 px-4 md:hidden">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <Menu size={18} />
+          </button>
+          <Link href="/dashboard" className="flex items-center gap-2 ml-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Zap size={12} strokeWidth={2.5} />
+            </div>
+            <span className="text-sm font-semibold">InterviewAI</span>
+          </Link>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-auto p-6 md:p-8">
-          {children}
+        {/* ── Page content ─────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-auto">
+          <div className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10">
+            {children}
+          </div>
         </div>
       </main>
     </div>
