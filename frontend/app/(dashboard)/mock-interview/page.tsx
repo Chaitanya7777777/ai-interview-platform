@@ -29,7 +29,8 @@ export default function MockInterviewPage() {
   // Form state
   const [role, setRole]             = useState("Software Engineer");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
-  const [resumeId, setResumeId]     = useState<string>("");
+  // null = nothing selected; user must pick explicitly
+  const [resumeId, setResumeId]     = useState<string | null>(null);
 
   // Data state
   const [resumes, setResumes]       = useState<ResumeHistoryItem[]>([]);
@@ -40,7 +41,7 @@ export default function MockInterviewPage() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  // Load analysed resumes
+  // Load analysed resumes — no auto-selection; user must pick explicitly
   useEffect(() => {
     setLoadingResumes(true);
     resumeService
@@ -48,12 +49,8 @@ export default function MockInterviewPage() {
       .then((page) => {
         const analysed = page.items.filter((r) => r.status === "analysed");
         setResumes(analysed);
-        if (analysed.length > 0) {
-          setResumeId(analysed[0].id);
-          // Pre-fill role from AI recommendation
-          const rec = analysed[0].analysis_result?.recommended_roles?.[0];
-          if (rec) setRole(rec);
-        }
+        // Intentionally NOT auto-selecting any resume.
+        // resumeId stays null until the user makes an explicit choice.
       })
       .catch(() => setResumeError("Could not load your resumes."))
       .finally(() => setLoadingResumes(false));
@@ -119,7 +116,7 @@ export default function MockInterviewPage() {
                 </div>
               ) : (
                 <>
-                  {/* Selected resume preview card — shown above the trigger */}
+                  {/* Selected resume preview card — shown above the trigger only when a selection has been made */}
                   {resumeId && (() => {
                     const sel = resumes.find((r) => r.id === resumeId);
                     return sel ? (
@@ -134,7 +131,8 @@ export default function MockInterviewPage() {
                       </div>
                     ) : null;
                   })()}
-                  <Select value={resumeId} onValueChange={(v) => v && setResumeId(v)}>
+                  {/* Pass empty string when null so Radix shows the placeholder text */}
+                  <Select value={resumeId ?? ""} onValueChange={(v) => v && setResumeId(v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a resume" />
                     </SelectTrigger>
@@ -147,6 +145,12 @@ export default function MockInterviewPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* Helper text — only visible before the user picks a resume */}
+                  {!resumeId && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Choose a resume to generate interview questions.
+                    </p>
+                  )}
                 </>
               )}
             </div>
