@@ -28,13 +28,14 @@ request is committed atomically.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db_session
 from app.schemas.auth import SupabaseUser
 from app.schemas.resume import ResumeHistoryPage, ResumeUploadResponse
 from app.services.profile_service import get_or_create_profile
-from app.services.resume_db_service import get_resume_history
+from app.services.resume_db_service import delete_resume, get_resume_history
 from app.services.resume_service import validate_and_parse_resume
 
 router = APIRouter(prefix="/resume", tags=["resume"])
@@ -131,3 +132,38 @@ async def get_resume_history_endpoint(
 
     # No writes → no commit needed for read-only endpoints
     return history
+
+
+@router.delete(
+    "/{resume_id}",
+    summary="Delete a resume",
+    description="Permanently delete a resume record owned by the authenticated user.",
+)
+async def delete_resume_endpoint(
+    resume_id: str,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """
+    1. Parse and validate the resume UUID.
+    2. Resolve the user's profile.
+    3. Delete the resume (ownership enforced in the service).
+    4. Commit.
+    """
+    from uuid import UUID
+    try:
+        resume_uuid = UUID(resume_id)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="Invalid resume ID.")
+
+    profile = await get_or_create_profile(session, current_user)
+
+    try:
+        await delete_resume(session, resume_id=resume_uuid, profile_id=profile.id)
+    except ValueError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await session.commit()
+    return Response(status_code=204)

@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -339,3 +339,46 @@ async def get_resume_for_interview(
             f"Resume {resume_id} not found or does not belong to your account."
         )
     return resume
+
+
+# ── Delete operations ─────────────────────────────────────────────────────────
+
+async def delete_interview_session(
+    session: AsyncSession,
+    *,
+    interview_id: UUID,
+    profile_id: UUID,
+) -> None:
+    """
+    Delete an interview session owned by the given profile.
+
+    Uses a raw SQL DELETE (not session.delete) to avoid SQLAlchemy ORM cascade
+    loading the `messages` relationship whose table may not exist in the DB.
+    Child rows (interview_questions) are cleaned up by the DB-level ON DELETE CASCADE FK.
+
+    Raises
+    ------
+    ValueError      : interview not found or does not belong to this profile.
+    PermissionError : profile mismatch.
+    """
+    # First verify ownership — only fetch id + profile_id, no relationship loading
+    check_stmt = select(Interview.id, Interview.profile_id).where(
+        Interview.id == interview_id
+    )
+    result = await session.execute(check_stmt)
+    row = result.first()
+
+    if row is None:
+        raise ValueError(f"Interview {interview_id} not found.")
+
+    if row.profile_id != profile_id:
+        raise PermissionError("You do not have permission to delete this interview.")
+
+    # Raw SQL DELETE — bypasses ORM cascade, relies on DB FK ON DELETE CASCADE
+    del_stmt = delete(Interview).where(
+        Interview.id == interview_id,
+        Interview.profile_id == profile_id,
+    )
+    await session.execute(del_stmt)
+    await session.flush()
+    logger.info("Deleted interview %s for profile %s", interview_id, profile_id)

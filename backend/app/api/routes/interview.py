@@ -30,6 +30,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db_session
@@ -45,6 +46,7 @@ from app.schemas.interview import (
 from app.services.ai_service import ai_service
 from app.services.interview_service import (
     create_interview_session,
+    delete_interview_session,
     get_interview_detail,
     get_interview_history,
     get_resume_for_interview,
@@ -283,3 +285,40 @@ async def get_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/{interview_id}",
+    summary="Delete an interview session",
+    description="Permanently delete an interview session owned by the authenticated user.",
+)
+async def delete_interview(
+    interview_id: str,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """
+    1. Parse and validate the interview UUID.
+    2. Resolve the user's profile.
+    3. Delete (ownership enforced in service).
+    4. Commit.
+    """
+    from uuid import UUID
+    try:
+        interview_uuid = UUID(interview_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid interview ID.")
+
+    profile = await get_or_create_profile(session, current_user)
+
+    try:
+        await delete_interview_session(
+            session, interview_id=interview_uuid, profile_id=profile.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    await session.commit()
+    return Response(status_code=204)

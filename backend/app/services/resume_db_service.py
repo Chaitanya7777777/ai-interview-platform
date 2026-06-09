@@ -167,3 +167,33 @@ async def get_resume_history(
         has_next=page < total_pages,
         has_prev=page > 1,
     )
+
+
+# ── Delete operations ─────────────────────────────────────────────────────────
+
+async def delete_resume(
+    session: AsyncSession,
+    *,
+    resume_id: UUID,
+    profile_id: UUID,
+) -> None:
+    """
+    Delete a resume record owned by the given profile.
+
+    Raises
+    ------
+    ValueError   if the resume doesn't exist or belongs to a different profile.
+    """
+    stmt = select(Resume).where(
+        Resume.id == resume_id,
+        Resume.profile_id == profile_id,
+    )
+    result = await session.execute(stmt)
+    resume = result.scalar_one_or_none()
+
+    if resume is None:
+        raise ValueError(f"Resume {resume_id} not found or access denied.")
+
+    await session.delete(resume)
+    await session.flush()
+    logger.info("Deleted resume %s for profile %s", resume_id, profile_id)

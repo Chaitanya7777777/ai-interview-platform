@@ -4,13 +4,17 @@
  * Fetches and renders the authenticated user's resume history.
  * Manages its own loading, error, and pagination state.
  * Uses HistoryItem for each row and EmptyState when no results.
+ *
+ * Features:
+ * - Collapsible section (chevron toggle in header)
+ * - Per-item delete with instant optimistic removal
  */
 
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { RefreshCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HistoryItem } from "./history-item";
@@ -26,10 +30,12 @@ export type HistoryListProps = {
 };
 
 export function HistoryList({ refreshKey = 0 }: HistoryListProps) {
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<ResumeHistoryPage | null>(null);
+  const [page, setPage]           = useState(1);
+  const [data, setData]           = useState<ResumeHistoryPage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
+  // Section collapse — expanded by default
+  const [collapsed, setCollapsed] = useState(false);
 
   const fetchHistory = useCallback(async (pageNum: number) => {
     setIsLoading(true);
@@ -59,6 +65,19 @@ export function HistoryList({ refreshKey = 0 }: HistoryListProps) {
     if (data?.has_next) setPage((p) => p + 1);
   };
 
+  /** Optimistically remove a deleted item from local state. */
+  const handleItemDeleted = (id: string) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const items = prev.items.filter((it) => it.id !== id);
+      return {
+        ...prev,
+        items,
+        total_count: Math.max(0, prev.total_count - 1),
+      };
+    });
+  };
+
   return (
     <Card className="shadow-sm border-border/60">
       <CardHeader className="pb-3">
@@ -71,70 +90,95 @@ export function HistoryList({ refreshKey = 0 }: HistoryListProps) {
               </CardDescription>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => fetchHistory(page)}
-            disabled={isLoading}
-            aria-label="Refresh history"
-            className="h-8 w-8"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
+
+          <div className="flex items-center gap-1">
+            {/* Refresh */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fetchHistory(page)}
+              disabled={isLoading}
+              aria-label="Refresh history"
+              className="h-8 w-8"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            </Button>
+
+            {/* Collapse / expand toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? "Expand list" : "Collapse list"}
+              aria-expanded={!collapsed}
+              className="h-8 w-8"
+            >
+              {collapsed
+                ? <ChevronDown className="h-4 w-4" />
+                : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent>
-        {isLoading ? (
-          <HistoryLoadingSkeleton rows={PAGE_SIZE} />
-        ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center" role="alert">
-            <p className="text-sm text-muted-foreground">{error}</p>
-            <Button variant="outline" size="sm" onClick={() => fetchHistory(page)}>
-              <RefreshCw className="mr-2 h-3.5 w-3.5" /> Retry
-            </Button>
-          </div>
-        ) : !data || data.items.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <>
-            <div className="space-y-2">
-              {data.items.map((item) => (
-                <HistoryItem key={item.id} item={item} />
-              ))}
+      {/* Body — hidden when collapsed */}
+      {!collapsed && (
+        <CardContent>
+          {isLoading ? (
+            <HistoryLoadingSkeleton rows={PAGE_SIZE} />
+          ) : error ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center" role="alert">
+              <p className="text-sm text-muted-foreground">{error}</p>
+              <Button variant="outline" size="sm" onClick={() => fetchHistory(page)}>
+                <RefreshCw className="mr-2 h-3.5 w-3.5" /> Retry
+              </Button>
             </div>
-
-            {/* Pagination */}
-            {data.total_pages > 1 && (
-              <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                <p className="text-xs text-muted-foreground">
-                  Page {data.page} of {data.total_pages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handlePrev}
-                    disabled={!data.has_prev}
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNext}
-                    disabled={!data.has_next}
-                    aria-label="Next page"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+          ) : !data || data.items.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <>
+              <div className="space-y-2">
+                {data.items.map((item) => (
+                  <HistoryItem
+                    key={item.id}
+                    item={item}
+                    onDelete={handleItemDeleted}
+                  />
+                ))}
               </div>
-            )}
-          </>
-        )}
-      </CardContent>
+
+              {/* Pagination */}
+              {data.total_pages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    Page {data.page} of {data.total_pages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrev}
+                      disabled={!data.has_prev}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNext}
+                      disabled={!data.has_next}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

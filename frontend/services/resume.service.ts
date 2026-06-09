@@ -171,4 +171,23 @@ export const resumeService = {
     await throwIfError(response);
     return response.json() as Promise<ResumeHistoryPage>;
   },
+
+  /**
+   * Delete a resume by ID.
+   *
+   * @param id  UUID of the resume to delete.
+   */
+  async deleteResume(id: string): Promise<void> {
+    const token = await getBearerToken();
+
+    const response = await fetch(`${RESUME_BASE_URL}/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    await throwIfError(response);
+  },
 };
