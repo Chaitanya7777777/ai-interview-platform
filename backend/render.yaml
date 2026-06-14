@@ -57,3 +57,12 @@ services:
 
       - key: SUPABASE_JWT_AUDIENCE
         value: authenticated
+
+      # ── Supabase Storage ───────────────────────────────────────────────────
+      # SECURITY: SUPABASE_SERVICE_ROLE_KEY must ONLY exist here (Render backend)
+      # and in the local backend .env file. NEVER add to Vercel or any frontend.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false   # Set in Render Dashboard → Environment
+
+      - key: SUPABASE_STORAGE_BUCKET
+        value: resumes

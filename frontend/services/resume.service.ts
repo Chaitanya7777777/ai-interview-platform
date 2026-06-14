@@ -37,6 +37,7 @@ export type ResumeHistoryItem = {
   id: string;                          // UUID
   profile_id: string;                  // UUID
   file_name: string;
+  file_url: string;                    // Storage object path (empty for legacy rows)
   file_size_bytes: number | null;
   status: "parsed" | "analysed" | "failed";
   text_length: number | null;
@@ -188,6 +189,50 @@ export const resumeService = {
       },
     });
 
-    await throwIfError(response);
+    if (response.status === 204 || response.ok) return;
+    const data = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    throw new Error(detail);
+  },
+
+  /**
+   * Open the original resume file in a new browser tab.
+   *
+   * The backend returns HTTP 307 → Supabase signed URL (10 min expiry).
+   * The browser follows the redirect automatically. The signed URL is never
+   * exposed to JavaScript — it stays in the browser's request chain.
+   *
+   * @param resumeId  UUID of the resume to download.
+   * @throws Error if the resume has no stored file (legacy row) or storage fails.
+   */
+  openResume(resumeId: string): void {
+    // We can't attach the auth token to window.open() easily.
+    // Instead, we fetch the redirect URL first, then open it.
+    getBearerToken().then((token) => {
+      fetch(`${RESUME_BASE_URL}/${resumeId}/download`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: "manual", // capture the redirect, don't follow it
+      })
+        .then((res) => {
+          if (res.type === "opaqueredirect" || res.status === 307 || res.status === 302) {
+            // Get Location header from the redirect response
+            const location = res.headers.get("location");
+            if (location) {
+              window.open(location, "_blank", "noopener,noreferrer");
+              return;
+            }
+          }
+          if (!res.ok) {
+            res.json()
+              .then((d) => { throw new Error(d?.detail ?? "Failed to open resume."); })
+              .catch(() => { throw new Error("Failed to open resume."); });
+          }
+        })
+        .catch((err) => {
+          console.error("openResume error:", err);
+          throw err;
+        });
+    });
   },
 };

@@ -4,27 +4,25 @@ resume_service.py
 Business-logic layer for resume upload, text extraction, AI analysis,
 and DB persistence orchestration.
 
-Responsibilities
-----------------
-1. Validate file extension, MIME type, and file size.
-2. Save the upload to a temp file on disk.
-3. Dispatch to the correct parser (PDF or DOCX).
-4. Delete the temp file — even when an error occurs.
-5. Persist the extracted text to the DB via resume_db_service.
-6. Optionally call AIService.analyze_resume() when requested.
-7. Persist the analysis result to the DB when available.
-8. Return a ResumeUploadResponse ready for the route to return.
+Upload flow (with storage)
+--------------------------
+1.  Validate extension + MIME type
+2.  Read bytes + validate size
+3.  Write to temp file → parse text → delete temp file
+    (any error here: abort — nothing uploaded yet)
+4.  Upload original bytes to Supabase Storage → get storage_path
+    (any error here: raise HTTP 503 — nothing in DB yet)
+5.  Create DB record with file_url = storage_path
+    (any error here: delete from Storage → raise)
+6.  Optionally run AI analysis + persist result
+7.  Return ResumeUploadResponse
 
-Flow (without analysis)
------------------------
-route → validate_and_parse_resume(analyse=False)
-      → parser → DB insert (status=parsed) → response
-
-Flow (with analysis)
---------------------
-route → validate_and_parse_resume(analyse=True)
-      → parser → DB insert (status=parsed)
-      → ai_service.analyze_resume() → DB update (status=analysed) → response
+Rollback guarantees
+-------------------
+- Parse failure        → no Storage write, no DB write
+- Storage upload fail  → raise (no DB write)
+- DB persist fail      → delete from Storage, then raise
+- AI failure           → DB record kept (resume still saved), raise
 """
 
 from __future__ import annotations
@@ -118,7 +116,9 @@ async def validate_and_parse_resume(
     analyse: bool = False,
 ) -> ResumeUploadResponse:
     """
-    Full pipeline: validate → extract text → persist → (optionally analyse) → return.
+    Full pipeline: validate → parse → upload → persist → (optionally analyse) → return.
+
+    Storage upload happens AFTER parsing succeeds — no orphan files for invalid uploads.
 
     Parameters
     ----------
@@ -137,23 +137,25 @@ async def validate_and_parse_resume(
     HTTPException(415) : unsupported file extension or MIME type
     HTTPException(413) : file > 5 MB
     HTTPException(422) : file is empty or cannot be parsed
-    HTTPException(503) : AI service error or timeout
+    HTTPException(503) : Storage upload failed or AI service error/timeout
     HTTPException(500) : AI API key not configured
     """
     # Lazy imports — keeps startup fast and avoids circular dependencies
     from app.services.resume_db_service import create_resume_record, save_analysis_result  # noqa: PLC0415
+    from app.services.storage_service import build_storage_path, delete_file, upload_file  # noqa: PLC0415
 
     filename: str = file.filename or "uploaded_file"
 
-    # 1. Validate extension and MIME type
+    # ── Step 1: Validate extension + MIME ─────────────────────────────────────
     extension = _validate_extension(filename)
     _validate_mime_type(file.content_type, extension)
 
-    # 2. Read + validate size
+    # ── Step 2: Read + validate size ──────────────────────────────────────────
     raw_bytes = await _read_and_validate_size(file)
     file_size = len(raw_bytes)
 
-    # 3. Write to temp file, parse, then always delete
+    # ── Step 3: Parse locally (temp file) ─────────────────────────────────────
+    # Storage upload only happens if this succeeds — no orphan objects for bad files.
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
@@ -169,17 +171,48 @@ async def validate_and_parse_resume(
         if tmp_path and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
 
-    # 4. Persist the upload record to the DB
-    resume = await create_resume_record(
-        session,
-        profile_id=profile_id,
-        file_name=filename,
-        file_size_bytes=file_size,
-        parsed_text=extracted_text,
-        content_type=file.content_type or "application/octet-stream",
-    )
+    # ── Step 4: Upload to Supabase Storage ────────────────────────────────────
+    storage_path = build_storage_path(profile_id, extension)
+    try:
+        storage_path = await upload_file(
+            storage_path,
+            raw_bytes,
+            file.content_type or "application/octet-stream",
+        )
+    except RuntimeError as exc:
+        logger.error("Storage upload failed for profile %s: %s", profile_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
-    # 5. Optionally run AI analysis and persist the result
+    # ── Step 5: Persist to DB ─────────────────────────────────────────────────
+    # On failure: delete the already-uploaded storage object before re-raising.
+    try:
+        resume = await create_resume_record(
+            session,
+            profile_id=profile_id,
+            file_name=filename,
+            file_size_bytes=file_size,
+            parsed_text=extracted_text,
+            content_type=file.content_type or "application/octet-stream",
+            file_url=storage_path,
+        )
+    except Exception as exc:
+        logger.error(
+            "DB persist failed after storage upload — rolling back storage object %s: %s",
+            storage_path, exc,
+        )
+        try:
+            await delete_file(storage_path)
+        except RuntimeError:
+            logger.error("Storage rollback also failed for %s — manual cleanup needed", storage_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save resume record. The upload has been rolled back.",
+        ) from exc
+
+    # ── Step 6: Optionally run AI analysis ────────────────────────────────────
     analysis_result = None
     analysis_warning = None
 
@@ -228,7 +261,7 @@ async def validate_and_parse_resume(
                 ),
             )
 
-    # 6. Build and return the response (session commit happens in the route)
+    # ── Step 7: Return response ───────────────────────────────────────────────
     return ResumeUploadResponse(
         resume_id=resume.id,
         filename=filename,

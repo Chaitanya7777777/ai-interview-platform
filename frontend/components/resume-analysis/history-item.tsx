@@ -10,7 +10,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Trash2, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, FileText, Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AnalysisCard } from "./analysis-card";
@@ -29,6 +29,9 @@ export function HistoryItem({ item, onDelete }: HistoryItemProps) {
   const [expanded, setExpanded]       = useState(false);
   const [confirming, setConfirming]   = useState(false);
   const [deleting, setDeleting]       = useState(false);
+  const [opening, setOpening]         = useState(false);
+
+  const hasFile = Boolean(item.file_url);
 
   const score      = item.analysis_result?.overall_score ?? null;
   const tier       = score !== null ? getScoreTier(score) : null;
@@ -52,6 +55,19 @@ export function HistoryItem({ item, onDelete }: HistoryItemProps) {
       toast.error(err instanceof Error ? err.message : "Failed to delete résumé.");
       setDeleting(false);
       setConfirming(false);
+    }
+  };
+
+  const handleView = () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      resumeService.openResume(item.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to open résumé.");
+    } finally {
+      // Brief delay so the button doesn't feel unresponsive
+      setTimeout(() => setOpening(false), 1500);
     }
   };
 
@@ -109,6 +125,21 @@ export function HistoryItem({ item, onDelete }: HistoryItemProps) {
             {expanded
               ? <ChevronDown className="h-4 w-4" aria-hidden="true" />
               : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        )}
+
+        {/* View Resume button — only shown when a file is stored */}
+        {hasFile && !confirming && (
+          <button
+            onClick={handleView}
+            disabled={opening}
+            aria-label="View original résumé file"
+            title="View Resume"
+            className="shrink-0 p-1.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-40"
+          >
+            {opening
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Eye className="h-3.5 w-3.5" />}
           </button>
         )}
 

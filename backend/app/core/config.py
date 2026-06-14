@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 
-from pydantic import AnyHttpUrl, Field, computed_field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,10 +28,17 @@ class Settings(BaseSettings):
 
     # ── Supabase ───────────────────────────────────────────────────────────────
     # SUPABASE_JWT_SECRET is required for JWT verification
-    supabase_url: AnyHttpUrl | None = Field(default=None, alias="SUPABASE_URL")
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_jwt_secret: str = Field(..., alias="SUPABASE_JWT_SECRET")
     supabase_jwt_audience: str = Field(default="authenticated", alias="SUPABASE_JWT_AUDIENCE")
     supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
+
+    # ── Supabase Storage ───────────────────────────────────────────────────────
+    # Service role key — NEVER expose to frontend. Backend + Render only.
+    # Find: Supabase Dashboard → Settings → API → service_role key
+    supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
+    # Bucket names — only "resumes" used today; voice/reports reserved for future
+    supabase_storage_bucket: str = Field(default="resumes", alias="SUPABASE_STORAGE_BUCKET")
 
     # ── AI provider ────────────────────────────────────────────────────────────
     ai_provider: str = Field(default="groq", alias="AI_PROVIDER")
@@ -86,6 +93,13 @@ class Settings(BaseSettings):
 
         if not self.database_url or self.database_url == "postgresql+asyncpg://user:password@host/db":
             errors.append("DATABASE_URL must be set to a real database in production.")
+
+        # Storage: warn if service role key missing (storage uploads will silently skip)
+        if not self.supabase_service_role_key:
+            errors.append(
+                "SUPABASE_SERVICE_ROLE_KEY is required in production for resume file storage. "
+                "Find it: Supabase Dashboard → Settings → API → service_role."
+            )
 
         only_localhost = all("localhost" in o or "127.0.0.1" in o for o in self.cors_origins)
         if only_localhost:

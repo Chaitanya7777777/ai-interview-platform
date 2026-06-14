@@ -12,6 +12,13 @@ POST /api/v1/resume/upload
 GET  /api/v1/resume/history
     Return the authenticated user's paginated resume upload history.
 
+GET  /api/v1/resume/{resume_id}/download
+    Generate a signed Supabase Storage URL and return HTTP 307 redirect.
+    Frontend uses window.open(endpoint_url) — never sees the signed URL directly.
+
+DELETE /api/v1/resume/{resume_id}
+    Delete resume from Storage (first) then DB. Abort if Storage delete fails.
+
 Dependency injection
 --------------------
 get_current_user    → verifies JWT, returns SupabaseUser
@@ -27,11 +34,15 @@ request is committed atomically.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
-from fastapi.responses import Response
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import RedirectResponse, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db_session
+from app.db.models.resume import Resume
 from app.schemas.auth import SupabaseUser
 from app.schemas.resume import ResumeHistoryPage, ResumeUploadResponse
 from app.services.profile_service import get_or_create_profile
@@ -73,12 +84,13 @@ async def upload_resume(
     Protected resume upload endpoint.
 
     1. Resolve (or create) the user's Profile row from their JWT.
-    2. Validate the file, extract text, persist to DB.
-    3. Optionally run AI analysis and persist the result.
-    4. Commit the transaction.
-    5. Return the full response.
+    2. Validate the file, extract text.
+    3. Upload to Supabase Storage (after parse succeeds — no orphan files).
+    4. Persist to DB with storage path.
+    5. Optionally run AI analysis and persist the result.
+    6. Commit the transaction.
+    7. Return the full response.
     """
-    # Resolve the profile so we have a profile_id for the resume FK
     profile = await get_or_create_profile(session, current_user)
 
     result = await validate_and_parse_resume(
@@ -134,10 +146,74 @@ async def get_resume_history_endpoint(
     return history
 
 
+@router.get(
+    "/{resume_id}/download",
+    summary="Download original resume file",
+    description=(
+        "Verify ownership, generate a 10-minute signed Supabase Storage URL, "
+        "and return HTTP 307 Temporary Redirect. "
+        "Frontend calls window.open(this_endpoint_url) — the signed URL is "
+        "never exposed as a JSON payload."
+    ),
+)
+async def download_resume(
+    resume_id: str,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    """
+    1. Parse and validate resume UUID.
+    2. Resolve user's profile.
+    3. Fetch resume — verify it belongs to this profile.
+    4. If file_url is empty → 404 (legacy row, no file stored).
+    5. Generate signed URL via storage_service.
+    6. Return 307 Temporary Redirect to the signed URL.
+    """
+    from app.services.storage_service import get_signed_url  # noqa: PLC0415
+
+    try:
+        resume_uuid = UUID(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid resume ID.")
+
+    profile = await get_or_create_profile(session, current_user)
+
+    # Fetch resume with ownership check
+    stmt = select(Resume).where(
+        Resume.id == resume_uuid,
+        Resume.profile_id == profile.id,
+    )
+    result = await session.execute(stmt)
+    resume = result.scalar_one_or_none()
+
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found.")
+
+    if not resume.file_url:
+        raise HTTPException(
+            status_code=404,
+            detail="No file stored for this resume. It was uploaded before file storage was enabled.",
+        )
+
+    try:
+        signed_url = await get_signed_url(resume.file_url, expires_in=600)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    # 307 Temporary Redirect — browser opens signed URL directly
+    return RedirectResponse(url=signed_url, status_code=307)
+
+
 @router.delete(
     "/{resume_id}",
     summary="Delete a resume",
-    description="Permanently delete a resume record owned by the authenticated user.",
+    description=(
+        "Delete resume file from Supabase Storage first, then delete the DB record. "
+        "If storage deletion fails, the DB record is preserved and the request aborts."
+    ),
 )
 async def delete_resume_endpoint(
     resume_id: str,
@@ -147,14 +223,13 @@ async def delete_resume_endpoint(
     """
     1. Parse and validate the resume UUID.
     2. Resolve the user's profile.
-    3. Delete the resume (ownership enforced in the service).
-    4. Commit.
+    3. Delete from Storage first (abort if fails).
+    4. Delete the DB row.
+    5. Commit.
     """
-    from uuid import UUID
     try:
         resume_uuid = UUID(resume_id)
     except ValueError:
-        from fastapi import HTTPException
         raise HTTPException(status_code=422, detail="Invalid resume ID.")
 
     profile = await get_or_create_profile(session, current_user)
@@ -162,8 +237,13 @@ async def delete_resume_endpoint(
     try:
         await delete_resume(session, resume_id=resume_uuid, profile_id=profile.id)
     except ValueError as exc:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        # Storage delete failed — DB row preserved, inform the client
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
     await session.commit()
     return Response(status_code=204)

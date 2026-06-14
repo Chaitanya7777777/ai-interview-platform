@@ -47,6 +47,7 @@ async def create_resume_record(
     file_size_bytes: int,
     parsed_text: str,
     content_type: str,
+    file_url: str = "",
 ) -> Resume:
     """
     Insert a new Resume row linked to the given profile.
@@ -62,7 +63,9 @@ async def create_resume_record(
     file_name       : original filename from the upload
     file_size_bytes : byte length of the uploaded file
     parsed_text     : full plain-text extracted from the file
-    content_type    : MIME type string (e.g. "application/pdf")
+    content_type    : MIME type string (e.g. "application/pdf") — not stored
+    file_url        : Supabase Storage object path (e.g. "resumes/abc/file.pdf")
+                      Empty string for legacy rows or when storage is not configured.
 
     Returns
     -------
@@ -71,15 +74,14 @@ async def create_resume_record(
     resume = Resume(
         profile_id=profile_id,
         file_name=file_name,
-        # file_url is kept nullable-compatible; no Supabase Storage yet
-        file_url="",
+        file_url=file_url,
         file_size_bytes=file_size_bytes,
         parsed_text=parsed_text,
         status="parsed",
     )
     session.add(resume)
     await session.flush()  # gives the row its UUID without committing
-    logger.info("Created resume record %s for profile %s", resume.id, profile_id)
+    logger.info("Created resume record %s for profile %s (storage_path=%r)", resume.id, profile_id, file_url)
     return resume
 
 
@@ -178,12 +180,27 @@ async def delete_resume(
     profile_id: UUID,
 ) -> None:
     """
-    Delete a resume record owned by the given profile.
+    Delete a resume record and its associated Storage file.
+
+    Order
+    -----
+    1. Verify ownership (fetch resume)
+    2. Delete from Supabase Storage FIRST
+       └ If storage delete fails: abort — do NOT touch the DB row
+    3. Delete the DB row
+    4. Flush
+
+    This order prevents orphaned storage objects: if the DB delete fails
+    after a storage delete, the file is already gone and the DB row can
+    be retried or cleaned up later.
 
     Raises
     ------
-    ValueError   if the resume doesn't exist or belongs to a different profile.
+    ValueError   : resume not found or belongs to a different profile
+    RuntimeError : storage deletion failed (DB row is preserved)
     """
+    from app.services.storage_service import delete_file  # noqa: PLC0415
+
     stmt = select(Resume).where(
         Resume.id == resume_id,
         Resume.profile_id == profile_id,
@@ -194,6 +211,19 @@ async def delete_resume(
     if resume is None:
         raise ValueError(f"Resume {resume_id} not found or access denied.")
 
+    # Step 2: Delete from Storage BEFORE touching the DB row
+    if resume.file_url:
+        try:
+            await delete_file(resume.file_url)
+        except RuntimeError as exc:
+            # Storage delete failed — abort the entire operation
+            logger.error(
+                "Storage delete failed for resume %s (path=%s): %s — DB row preserved.",
+                resume_id, resume.file_url, exc,
+            )
+            raise
+
+    # Step 3: Delete the DB row
     await session.delete(resume)
     await session.flush()
     logger.info("Deleted resume %s for profile %s", resume_id, profile_id)
