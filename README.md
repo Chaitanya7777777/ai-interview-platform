@@ -43,6 +43,7 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 
 | Capability | What it does | Why it matters |
 |---|---|---|
+| Supabase Storage-backed uploads | Stores original resume files in private Supabase Storage | Keeps files retrievable without exposing them to the frontend |
 | PDF and DOCX uploads | Accepts common resume formats | Supports real-world applicant workflows |
 | AI resume evaluation | Reviews resume content with Groq-powered analysis | Produces structured, actionable feedback |
 | ATS-style scoring | Assigns a score based on resume quality signals | Helps users understand readiness at a glance |
@@ -65,28 +66,30 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 | Capability | What it does | Why it matters |
 |---|---|---|
 | Resume and interview history | Stores and surfaces past analyses and sessions | Enables progress tracking and repeat practice |
+| Original resume download | Opens stored resume files through signed Supabase URLs | Lets users review the exact file they uploaded |
+| Safe resume deletion | Removes the storage object before deleting the database row | Prevents orphaned files and stale records |
 | Score trend visualization | Shows score progression over time | Makes improvement patterns visible |
 | Recommended roles and skill gaps | Aggregates role suggestions and missing skills | Keeps learning priorities clear |
 | Analytics summary cards | Highlights key metrics in one view | Improves decision-making speed for users |
-
-### AI Features
-
-| Capability | What it does | Why it matters |
-|---|---|---|
-| Groq-powered LLM analysis | Uses Groq for fast AI inference | Keeps the product responsive |
-| Structured JSON responses | Returns predictable analysis payloads | Makes frontend rendering and API integration reliable |
-| Async AI processing pipeline | Runs analysis in a non-blocking backend flow | Improves scalability and responsiveness |
-| Production-ready fallback handling | Handles failures more safely | Keeps the product usable under degraded conditions |
-
 ### Infrastructure
 
 | Capability | What it does | Why it matters |
 |---|---|---|
 | PostgreSQL-backed persistence | Stores resume analysis history and metadata | Enables repeat usage and auditability |
+| Supabase Storage integration | Stores uploaded resumes outside the database | Keeps large files and metadata separated cleanly |
 | SQLAlchemy Async | Uses async ORM/database access patterns | Fits modern FastAPI production architecture |
 | Alembic migrations | Manages schema evolution | Keeps database changes controlled |
 | Vercel deployment | Hosts the frontend | Enables fast global delivery |
 | Render deployment | Hosts the backend API | Provides simple production hosting |
+
+### AI Features
+
+| Capability | What it does | Why it matters |
+|---|---|---|
+| Groq-powered LLM analysis | Uses Groq for fast AI inference with configurable model settings | Keeps the product responsive |
+| Structured JSON responses | Returns predictable analysis payloads | Makes frontend rendering and API integration reliable |
+| Async AI processing pipeline | Runs analysis in a non-blocking backend flow | Improves scalability and responsiveness |
+| Production-ready fallback handling | Handles failures more safely | Keeps the product usable under degraded conditions |
 
 ### UX Features
 
@@ -133,18 +136,21 @@ sequenceDiagram
     participant User
     participant Frontend
     participant API as FastAPI Backend
-    participant AI as Groq Service
+    participant Storage as Supabase Storage
     participant DB as PostgreSQL
+    participant AI as Groq Service
 
     User->>Frontend: Upload resume
     Frontend->>API: POST multipart request
-    API->>API: Validate JWT and request payload
-    API->>API: Parse document and extract text
+    API->>API: Validate JWT & request payload
+    API->>API: Parse document & extract text
+    API->>Storage: Upload original document bytes
+    Storage-->>API: Storage path/Signed URL
+    API->>DB: Save resume metadata & storage path
     API->>AI: Send structured analysis prompt
     AI-->>API: Return JSON analysis
-    API->>DB: Persist resume + analysis result
-    DB-->>API: Saved record ID
-    API-->>Frontend: Analysis payload
+    API->>DB: Persist analysis result
+    API-->>Frontend: Complete analysis payload
     Frontend-->>User: Render score, feedback, and recommendations
 ```
 
@@ -154,10 +160,11 @@ sequenceDiagram
 flowchart TD
     A[Resume uploaded from frontend] --> B[Backend validates file and user session]
     B --> C[Resume text extraction and parsing]
-    C --> D[AI analysis request to Groq]
-    D --> E[Structured JSON analysis response]
-    E --> F[Database persistence]
-    F --> G[Frontend renders final result]
+    C --> D[Upload original file to Supabase Storage]
+    D --> E[AI analysis request to Groq]
+    E --> F[Structured JSON analysis response]
+    F --> G[Database persistence]
+    G --> H[Frontend renders final result]
 ```
 
 ---
@@ -170,6 +177,7 @@ flowchart TD
 | Backend | FastAPI, SQLAlchemy Async, Alembic, Pydantic v2, AsyncPG |
 | Database | PostgreSQL |
 | Authentication | Supabase Auth |
+| Storage | Supabase Storage |
 | AI | Groq API, Llama models |
 | Hosting | Vercel, Render |
 
@@ -212,11 +220,12 @@ The backend upload pipeline is designed as a clear, production-style sequence:
 1. The user uploads a resume from the frontend.
 2. The backend validates the request, checks authentication, and verifies file input.
 3. The resume is parsed and text is extracted for analysis.
-4. The extracted content is sent to the AI service with a structured prompt.
-5. The AI response is normalized into a stable JSON format.
-6. The result is persisted in PostgreSQL with resume metadata.
-7. The frontend receives the analysis and renders the score, feedback, and recommendations.
-8. Historical results remain available for later review.
+4. The original file is uploaded to private Supabase Storage.
+5. The extracted content is sent to the AI service with a structured prompt when analysis is requested.
+6. The AI response is normalized into a stable JSON format.
+7. The result is persisted in PostgreSQL with resume metadata and the storage path.
+8. The frontend receives the analysis and renders the score, feedback, and recommendations.
+9. Historical results remain available for later review and download.
 
 This flow keeps the system modular and easier to debug while preserving a reliable user experience.
 
@@ -228,6 +237,7 @@ This flow keeps the system modular and easier to debug while preserving a reliab
 |---|---|
 | JWT verification | Supabase JWT verification using JWKS |
 | Supabase auth | Authenticated user sessions through Supabase Auth |
+| Private file storage | Resume files are kept in Supabase Storage and exposed through signed URLs only |
 | Protected APIs | Backend routes are guarded before sensitive actions |
 | CORS handling | Cross-origin access is explicitly configured |
 | Environment validation | Required runtime values are validated before use |
@@ -295,8 +305,13 @@ SUPABASE_URL=YOUR_SUPABASE_URL
 SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_JWT_SECRET=YOUR_SUPABASE_JWT_SECRET
+SUPABASE_JWT_AUDIENCE=authenticated
+SUPABASE_JWT_ISSUER=YOUR_SUPABASE_ISSUER_OPTIONAL
+SUPABASE_STORAGE_BUCKET=resumes
 
+AI_PROVIDER=groq
 GROQ_API_KEY=YOUR_GROQ_API_KEY
+GROQ_MODEL=llama-3.3-70b-versatile
 
 CORS_ORIGINS=http://localhost:3000
 ENVIRONMENT=development
@@ -406,8 +421,13 @@ SUPABASE_URL=YOUR_SUPABASE_URL
 SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_JWT_SECRET=YOUR_SUPABASE_JWT_SECRET
+SUPABASE_JWT_AUDIENCE=authenticated
+SUPABASE_JWT_ISSUER=YOUR_SUPABASE_ISSUER_OPTIONAL
+SUPABASE_STORAGE_BUCKET=resumes
 
+AI_PROVIDER=groq
 GROQ_API_KEY=YOUR_GROQ_API_KEY
+GROQ_MODEL=llama-3.3-70b-versatile
 
 CORS_ORIGINS=https://YOUR_VERCEL_DOMAIN.vercel.app
 ENVIRONMENT=production
@@ -419,6 +439,7 @@ ENVIRONMENT=production
 |---|---|
 | Auth | Used for secure user authentication |
 | Database | Backing store for application data |
+| Storage | Private resume file storage and signed downloads |
 | JWT secret | Required for token verification on the backend |
 
 ---
@@ -442,14 +463,47 @@ Example response:
 
 ```json
 {
-  "overall_score": 82,
-  "strengths": [],
-  "weaknesses": [],
-  "missing_skills": [],
-  "recommended_roles": [],
-  "improvement_suggestions": []
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "filename": "resume.pdf",
+  "content_type": "application/pdf",
+  "file_size_bytes": 123456,
+  "text_length": 4821,
+  "extracted_text": "...",
+  "analysis_result": {
+    "overall_score": 82,
+    "strengths": [],
+    "weaknesses": [],
+    "missing_skills": [],
+    "recommended_roles": [],
+    "improvement_suggestions": []
+  },
+  "analysis_warning": null
 }
 ```
+
+### Resume History
+
+```http
+GET /api/v1/resume/history?page=1&page_size=10
+```
+
+Returns the authenticated user's paginated resume history, including the storage path for uploaded files and any saved analysis result.
+
+### Resume Download
+
+```http
+GET /api/v1/resume/{resume_id}/download
+```
+
+This endpoint verifies ownership and redirects to a short-lived signed Supabase Storage URL.
+
+### Resume Delete
+
+```http
+DELETE /api/v1/resume/{resume_id}
+```
+
+The backend deletes the storage object first and only removes the database row after storage deletion succeeds.
 
 ### Authenticated Request Pattern
 
@@ -502,8 +556,8 @@ Use this header for protected backend routes that require a verified user sessio
 
 **Chaitanya Gulechha**
 
-- GitHub: https://github.com/Chaitanya7777777
-- LinkedIn: https://www.linkedin.com/in/chaitanya-gulechha-328a89322/
+- [GitHub](https://github.com/Chaitanya7777777)
+- [LinkedIn](https://www.linkedin.com/in/chaitanya-gulechha-328a89322/)
 
 ---
 
