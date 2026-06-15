@@ -42,6 +42,7 @@ from app.core.config import settings
 from app.schemas.ai import (
     InterviewFeedbackResponse,
     InterviewQuestionSet,
+    JobMatchAnalysisResponse,
     QuestionEvaluationResponse,
     ResumeAnalysisResponse,
 )
@@ -474,7 +475,66 @@ class AIService:
         )
         return await self._generate_structured_response(prompt, QuestionEvaluationResponse)
 
+    # ── Public: job match analysis ────────────────────────────────────────────
+
+    async def analyze_job_match(
+        self,
+        resume_text: str,
+        job_description: str,
+    ) -> tuple[JobMatchAnalysisResponse, bool]:
+        """
+        Analyse how well a resume matches a job description.
+
+        Parameters
+        ----------
+        resume_text     : Plain text extracted from the candidate's resume.
+        job_description : Raw job description text pasted by the user.
+
+        Returns
+        -------
+        (JobMatchAnalysisResponse, is_fallback)
+            is_fallback is True when the result was produced by the fallback
+            handler (i.e. Groq returned malformed JSON).
+
+        Raises
+        ------
+        RuntimeError          : GROQ_API_KEY not configured.
+        asyncio.TimeoutError  : Groq took longer than GROQ_TIMEOUT_SECONDS.
+        """
+        template = load_prompt_template("job_match.txt")
+        prompt = self._safe_format(
+            template,
+            resume_text=resume_text,
+            job_description=job_description,
+        )
+
+        try:
+            result = await self._generate_structured_response(prompt, JobMatchAnalysisResponse)
+            return result, False
+
+        except (ValidationError, json.JSONDecodeError, ValueError) as exc:
+            logger.warning(
+                "JobMatchAnalysisResponse validation failed — using fallback. Error: %s", exc
+            )
+            fallback = JobMatchAnalysisResponse(
+                match_score=0,
+                ats_score=0,
+                strengths=["Could not extract strengths — please try again."],
+                missing_keywords=["Analysis unavailable — please retry."],
+                missing_skills=["Analysis unavailable — please retry."],
+                recommendations=["The AI analysis could not be parsed. Please retry."],
+                role_fit="Analysis unavailable due to an AI formatting error.",
+                interview_readiness="Analysis unavailable — please retry.",
+                summary=f"The AI analysis could not be parsed. Reason: {exc}",
+            )
+            return fallback, True
+
+        except Exception as exc:
+            logger.error("Groq error during job match analysis: %s", exc)
+            raise
+
 
 # ── Module-level singleton ────────────────────────────────────────────────────
 
 ai_service = AIService()
+

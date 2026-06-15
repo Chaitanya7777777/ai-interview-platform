@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
-import { FileText, Target, Plus, RefreshCw, ArrowRight } from "lucide-react";
+import { Briefcase, FileText, Target, Plus, RefreshCw, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { dashboardService, DashboardAnalytics } from "@/services/dashboard.service";
 import { resumeService, ResumeHistoryItem } from "@/services/resume.service";
+import { jobMatchService, type JobMatchDashboardStats } from "@/services/job-match.service";
 import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ function ChartTooltip({ active, payload }: {
 type State =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "success"; analytics: DashboardAnalytics; recent: ResumeHistoryItem[] };
+  | { status: "success"; analytics: DashboardAnalytics; recent: ResumeHistoryItem[]; matchStats: JobMatchDashboardStats | null };
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -123,9 +124,10 @@ export default function DashboardPage() {
     Promise.all([
       dashboardService.getAnalytics(),
       resumeService.getHistory({ page: 1, pageSize: 6 }),
+      jobMatchService.getDashboardStats().catch(() => null),
     ])
-      .then(([analytics, history]) =>
-        setState({ status: "success", analytics, recent: history.items })
+      .then(([analytics, history, matchStats]) =>
+        setState({ status: "success", analytics, recent: history.items, matchStats })
       )
       .catch((err: unknown) =>
         setState({
@@ -137,9 +139,10 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loading   = state.status === "loading";
-  const analytics = state.status === "success" ? state.analytics : null;
-  const recent    = state.status === "success" ? state.recent : [];
+  const loading    = state.status === "loading";
+  const analytics  = state.status === "success" ? state.analytics : null;
+  const recent     = state.status === "success" ? state.recent : [];
+  const matchStats = state.status === "success" ? state.matchStats : null;
 
   // Build chart data sorted chronologically (day first, then submission order).
   // Key = "YYYY-MM-DD-{i}" — a composite string guaranteed to be unique per entry.
@@ -381,6 +384,65 @@ export default function DashboardPage() {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Job Match Stats ───────────────────────────────────────────────── */}
+      {(loading || (matchStats && matchStats.total_matches > 0)) && (
+        <div className="space-y-4 section-divide">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="section-label">Job Match Analyzer</p>
+              <h3 className="mt-1">Match performance</h3>
+            </div>
+            <Link
+              href="/job-match"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
+            >
+              Analyze a job <ArrowRight size={11} />
+            </Link>
+          </div>
+
+          {/* Stat row */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+            <Stat
+              label="Best match"
+              value={matchStats ? `${matchStats.best_match_score}%` : "—"}
+              loading={loading}
+            />
+            <Stat
+              label="Average match"
+              value={matchStats ? `${matchStats.average_match_score}%` : "—"}
+              loading={loading}
+            />
+            <Stat
+              label="Total analyses"
+              value={matchStats ? `${matchStats.total_matches}` : "—"}
+              loading={loading}
+            />
+          </div>
+
+          {/* Recent matches mini-list */}
+          {matchStats && matchStats.recent_matches.length > 0 && (
+            <div className="space-y-1">
+              {matchStats.recent_matches.map((m) => (
+                <div key={m.id} className="hover-row flex items-center gap-3">
+                  <div className="h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                    <Briefcase size={13} className="text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate leading-none">{m.resume_filename}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                      {m.role_fit ? m.role_fit.slice(0, 60) + (m.role_fit.length > 60 ? "…" : "") : ""}
+                    </p>
+                  </div>
+                  <span className={cn("text-sm font-semibold tabular-nums shrink-0", scoreClass(m.match_score))}>
+                    {m.match_score}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

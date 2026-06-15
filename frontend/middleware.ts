@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const protectedRoutes = [
   "/dashboard",
   "/resume-analysis",
+  "/job-match",
   "/mock-interview",
   "/history",
   "/settings",
@@ -99,6 +100,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/resume-analysis/:path*",
+    "/job-match/:path*",
     "/mock-interview/:path*",
     "/history/:path*",
     "/settings/:path*",

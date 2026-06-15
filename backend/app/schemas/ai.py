@@ -56,3 +56,22 @@ class QuestionEvaluationResponse(BaseModel):
         min_length=1,
         description="Specific actionable improvements",
     )
+
+
+class JobMatchAnalysisResponse(BaseModel):
+    """
+    Structured AI output for the Job Match Analyzer feature.
+
+    Matches the exact JSON schema enforced by job_match.txt.
+    Validated by Pydantic — any missing or wrong-type field raises ValidationError.
+    """
+
+    match_score: int = Field(ge=0, le=100, description="Resume-to-JD compatibility 0-100")
+    ats_score: int = Field(ge=0, le=100, description="ATS keyword match score 0-100")
+    strengths: list[str] = Field(min_length=1, description="Resume aspects that directly match the JD")
+    missing_keywords: list[str] = Field(min_length=1, description="JD keywords absent from the resume")
+    missing_skills: list[str] = Field(min_length=1, description="Capability gaps relative to the JD")
+    recommendations: list[str] = Field(min_length=1, description="Actionable resume edits for this role")
+    role_fit: str = Field(description="2-3 sentence narrative on overall role fit")
+    interview_readiness: str = Field(description="1-2 sentence interview readiness assessment")
+    summary: str = Field(description="2-3 sentence executive summary of the match")

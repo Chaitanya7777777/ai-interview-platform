@@ -24,3 +24,4 @@ class Profile(Base):
 
     resumes = relationship("Resume", back_populates="profile", cascade="all, delete-orphan")
     interviews = relationship("Interview", back_populates="profile", cascade="all, delete-orphan")
+    job_matches = relationship("JobMatch", back_populates="profile", cascade="all, delete-orphan")

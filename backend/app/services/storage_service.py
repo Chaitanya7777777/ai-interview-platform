@@ -11,15 +11,15 @@ Why REST instead of supabase-py?
 Bucket design
 -------------
   resumes/           ← private, authenticated access only
+  job-descriptions/  ← private, job description .txt files
   voice/             ← reserved for future voice interview recordings
-  reports/           ← reserved for future PDF report exports
 
-Only the "resumes" bucket is implemented today.
+Only "resumes" and "job-descriptions" buckets are implemented today.
 
-Storage path format
--------------------
+Storage path formats
+--------------------
   resumes/{profile_id}/{YYYYMMDD}_{uuid8}.{ext}
-  Example: resumes/abc123/20260609_6fa7a8b9.pdf
+  job-descriptions/{profile_id}/{YYYYMMDD}_{uuid8}.txt
 
 Security
 --------
@@ -313,3 +313,135 @@ async def file_exists(object_path: str) -> bool:
         return response.status_code == 200
     except httpx.RequestError:
         return False
+
+
+# ── Job-description text storage ──────────────────────────────────────────────
+
+_JD_BUCKET = "job-descriptions"
+
+
+def build_jd_storage_path(profile_id: UUID) -> str:
+    """
+    Build a collision-free storage path for a job description text file.
+
+    Format: job-descriptions/{profile_id}/{YYYYMMDD}_{uuid8}.txt
+    Example: job-descriptions/abc123/20260615_7fa3c8b1.txt
+
+    Parameters
+    ----------
+    profile_id : UUID of the authenticated user's Profile row
+
+    Returns
+    -------
+    Full object path string (NOT a URL).
+    """
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    uid_short = uuid4().hex[:8]
+    return f"{_JD_BUCKET}/{profile_id}/{date_str}_{uid_short}.txt"
+
+
+async def upload_text(object_path: str, text: str) -> str:
+    """
+    Upload a UTF-8 text string to Supabase Storage.
+
+    Used for job description files stored in the job-descriptions bucket.
+
+    Parameters
+    ----------
+    object_path : full object path, e.g. "job-descriptions/abc/20260615_7fa.txt"
+    text        : raw text content to upload
+
+    Returns
+    -------
+    The object_path (stored in DB as job_description_path).
+
+    Raises
+    ------
+    RuntimeError : storage not configured or upload failed
+    """
+    if not _storage_available():
+        raise RuntimeError(
+            "Supabase Storage is not configured. "
+            "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+        )
+
+    data = text.encode("utf-8")
+
+    parts = object_path.split("/", 1)
+    bucket = parts[0]
+    path_in_bucket = parts[1] if len(parts) > 1 else object_path
+
+    url = f"{_base_url()}/storage/v1/object/{bucket}/{path_in_bucket}"
+    headers = {
+        **_auth_headers(),
+        "Content-Type": "text/plain; charset=utf-8",
+        "x-upsert": "true",
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(url, content=data, headers=headers)
+
+    if response.status_code not in (200, 201):
+        logger.error(
+            "Text upload failed: status=%s body=%s path=%s",
+            response.status_code,
+            response.text[:300],
+            object_path,
+        )
+        raise RuntimeError(
+            f"Failed to upload job description to storage (HTTP {response.status_code}). "
+            "Please try again."
+        )
+
+    logger.info("Uploaded JD text to storage: %s (%d bytes)", object_path, len(data))
+    return object_path
+
+
+async def download_text(object_path: str) -> str:
+    """
+    Download a text object from Supabase Storage and return its content.
+
+    Uses the authenticated endpoint (service role key) — never returns
+    a URL to the caller.
+
+    Parameters
+    ----------
+    object_path : full object path, e.g. "job-descriptions/abc/20260615_7fa.txt"
+
+    Returns
+    -------
+    UTF-8 decoded text content.
+
+    Raises
+    ------
+    RuntimeError : storage not configured, object not found, or download failed
+    """
+    if not _storage_available():
+        raise RuntimeError("Supabase Storage is not configured.")
+
+    parts = object_path.split("/", 1)
+    bucket = parts[0]
+    path_in_bucket = parts[1] if len(parts) > 1 else object_path
+
+    url = f"{_base_url()}/storage/v1/object/authenticated/{bucket}/{path_in_bucket}"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, headers=_auth_headers())
+
+    if response.status_code == 404:
+        raise RuntimeError(f"Job description file not found in storage: {object_path}")
+
+    if response.status_code not in (200, 206):
+        logger.error(
+            "Text download failed: status=%s body=%s path=%s",
+            response.status_code,
+            response.text[:300],
+            object_path,
+        )
+        raise RuntimeError(
+            f"Failed to retrieve job description from storage (HTTP {response.status_code})."
+        )
+
+    logger.debug("Downloaded JD text from storage: %s", object_path)
+    return response.content.decode("utf-8")
+

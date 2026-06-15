@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
+  Briefcase,
   MessageSquare,
   History,
   Settings,
@@ -23,6 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const NAV = [
   { name: "Dashboard",       href: "/dashboard",       icon: LayoutDashboard },
   { name: "Resume Analysis", href: "/resume-analysis",  icon: FileText },
+  { name: "Job Match",       href: "/job-match",        icon: Briefcase },
   { name: "Mock Interviews", href: "/mock-interview",   icon: MessageSquare },
   { name: "History",         href: "/history",          icon: History },
   { name: "Settings",        href: "/settings",         icon: Settings },
