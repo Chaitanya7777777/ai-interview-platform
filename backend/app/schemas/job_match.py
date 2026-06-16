@@ -75,7 +75,34 @@ class JobMatchResponse(BaseModel):
     created_at: datetime
 
 
+class JobMatchDetailResponse(BaseModel):
+    """
+    Richer detail payload for a job match view.
+    Does not reuse history DTO and provides complete report metrics.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    resume_id: UUID
+    resume_filename: str
+    match_score: int
+    ats_score: int
+    job_title: str | None = None
+    company_name: str | None = None
+    created_at: datetime
+    summary: str
+    strengths: list[str]
+    missing_keywords: list[str]
+    missing_skills: list[str]
+    recommendations: list[str]
+    role_fit: str
+    interview_readiness: str
+    job_description_preview: str | None = None
+
+
 # ── History schemas ───────────────────────────────────────────────────────────
+
 
 class JobMatchHistoryItem(BaseModel):
     """

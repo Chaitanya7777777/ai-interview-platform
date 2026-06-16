@@ -37,28 +37,38 @@ GET routes are read-only — no commit needed.
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db_session
+from app.db.models.resume import Resume
+from app.db.models.job_match import JobMatch
 from app.schemas.auth import SupabaseUser
 from app.schemas.job_match import (
     JobDescriptionViewResponse,
     JobMatchDashboardStats,
+    JobMatchDetailResponse,
     JobMatchHistoryPage,
     JobMatchRequest,
     JobMatchResponse,
 )
 from app.services.job_match_db_service import (
     get_job_match_dashboard_stats,
+    get_job_match_detail,
     get_job_match_for_view,
     get_job_match_history,
 )
 from app.services.job_match_service import run_job_match
 from app.services.profile_service import get_or_create_profile
 from app.services import storage_service
+from app.services.report_service import generate_and_upload_report, get_signed_report_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/job-match", tags=["job-match"])
 
@@ -226,3 +236,116 @@ async def view_job_description(
             "It may have been created before storage support was enabled."
         ),
     )
+
+
+@router.get(
+    "/{match_id}",
+    response_model=JobMatchDetailResponse,
+    summary="Get job match detail",
+    description=(
+        "Fetch the complete structured analysis and metadata for a specific match. "
+        "Ownership-verified (returns 404 if the match belongs to another profile)."
+    ),
+)
+async def get_job_match_detail_endpoint(
+    match_id: UUID,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> JobMatchDetailResponse:
+    profile = await get_or_create_profile(session, current_user)
+    result = await get_job_match_detail(
+        session,
+        match_id=match_id,
+        profile_id=profile.id,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job match not found or access denied.",
+        )
+    return result
+
+
+@router.post(
+    "/{match_id}/export",
+    summary="Export Job Match to PDF report",
+    description="Generate a high-fidelity PDF report of the job match analysis and save it to storage.",
+)
+async def export_job_match_report(
+    match_id: UUID,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    profile = await get_or_create_profile(session, current_user)
+
+    stmt = select(JobMatch).where(
+        JobMatch.id == match_id,
+        JobMatch.profile_id == profile.id,
+    )
+    result = await session.execute(stmt)
+    match_row = result.scalar_one_or_none()
+    if match_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job match not found or access denied.",
+        )
+
+    resume_stmt = select(Resume.file_name).where(Resume.id == match_row.resume_id)
+    resume_res = await session.execute(resume_stmt)
+    resume_filename = resume_res.scalar_one_or_none() or "Resume"
+
+    try:
+        await generate_and_upload_report(
+            session,
+            match=match_row,
+            resume_filename=resume_filename,
+            profile_id=profile.id,
+        )
+        await session.commit()
+    except Exception as exc:
+        logger.error("Failed to generate or upload report: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Report generation failed: {exc}",
+        )
+
+    return {"report_ready": True}
+
+
+@router.get(
+    "/{match_id}/report",
+    summary="Get signed report download URL redirect",
+    description="Generates a signed URL for the report PDF and redirects the client to trigger download.",
+)
+async def get_report_download_redirect(
+    match_id: UUID,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    profile = await get_or_create_profile(session, current_user)
+
+    stmt = select(JobMatch).where(
+        JobMatch.id == match_id,
+        JobMatch.profile_id == profile.id,
+    )
+    res = await session.execute(stmt)
+    if res.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job match not found or access denied.",
+        )
+
+    signed_url = await get_signed_report_url(
+        session,
+        match_id=match_id,
+        profile_id=profile.id,
+    )
+    if signed_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF Report not generated yet. Please export first.",
+        )
+
+    return RedirectResponse(url=signed_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+

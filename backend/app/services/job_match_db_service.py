@@ -37,6 +37,7 @@ from app.db.models.resume import Resume
 from app.schemas.ai import JobMatchAnalysisResponse
 from app.schemas.job_match import (
     JobMatchDashboardStats,
+    JobMatchDetailResponse,
     JobMatchHistoryItem,
     JobMatchHistoryPage,
     JobMatchResponse,
@@ -345,3 +346,49 @@ async def get_job_match_for_view(
     )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
+
+
+def _to_detail_response(row: JobMatch, resume_filename: str) -> JobMatchDetailResponse:
+    """Convert a JobMatch ORM row + resume filename into the detail API response schema."""
+    return JobMatchDetailResponse(
+        id=row.id,
+        resume_id=row.resume_id,
+        resume_filename=resume_filename,
+        match_score=row.match_score,
+        ats_score=row.ats_score,
+        strengths=row.strengths or [],
+        missing_keywords=row.missing_keywords or [],
+        missing_skills=row.missing_skills or [],
+        recommendations=row.recommendations or [],
+        role_fit=row.role_fit or "",
+        interview_readiness=row.interview_readiness or "",
+        summary=row.summary or "",
+        job_title=row.job_title,
+        company_name=row.company_name,
+        job_description_preview=row.job_description_preview,
+        created_at=row.created_at,
+    )
+
+
+async def get_job_match_detail(
+    session: AsyncSession,
+    *,
+    match_id: UUID,
+    profile_id: UUID,
+) -> JobMatchDetailResponse | None:
+    """
+    Fetch a single JobMatch row with joined Resume.file_name.
+    Ownership-verified (profile_id check).
+    """
+    stmt = (
+        select(JobMatch, Resume.file_name)
+        .join(Resume, JobMatch.resume_id == Resume.id)
+        .where(JobMatch.id == match_id, JobMatch.profile_id == profile_id)
+    )
+    result = await session.execute(stmt)
+    row = result.one_or_none()
+    if row is None:
+        return None
+    match_row, resume_filename = row
+    return _to_detail_response(match_row, resume_filename)
+

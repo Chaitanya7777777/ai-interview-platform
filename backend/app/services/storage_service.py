@@ -281,6 +281,8 @@ async def get_signed_url(object_path: str, expires_in: int = 600) -> str:
 
     # Prefix with project URL if the path is relative
     if signed.startswith("/"):
+        if not signed.startswith("/storage/v1"):
+            signed = f"/storage/v1{signed}"
         signed = f"{_base_url()}{signed}"
 
     logger.debug("Generated signed URL for %s (expires_in=%ds)", object_path, expires_in)

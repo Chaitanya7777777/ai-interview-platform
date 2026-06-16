@@ -44,6 +44,25 @@ export type JobMatchResult = {
   created_at: string;              // ISO 8601
 };
 
+export type JobMatchDetailResult = {
+  id: string;
+  resume_id: string;
+  resume_filename: string;
+  match_score: number;
+  ats_score: number;
+  job_title: string | null;
+  company_name: string | null;
+  created_at: string;
+  summary: string;
+  strengths: string[];
+  missing_keywords: string[];
+  missing_skills: string[];
+  recommendations: string[];
+  role_fit: string;
+  interview_readiness: string;
+  job_description_preview: string | null;
+};
+
 export type JobMatchHistoryItem = {
   id: string;
   resume_id: string;
@@ -187,5 +206,42 @@ export const jobMatchService = {
     );
     await throwIfError(response);
     return response.json() as Promise<JobDescriptionView>;
+  },
+
+  /**
+   * Fetch complete details of a specific job match.
+   */
+  async getJobMatchDetail(matchId: string): Promise<JobMatchDetailResult> {
+    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}`);
+    await throwIfError(response);
+    return response.json() as Promise<JobMatchDetailResult>;
+  },
+
+  /**
+   * Trigger PDF report generation.
+   */
+  async exportPDF(matchId: string): Promise<{ report_ready: boolean }> {
+    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/export`, {
+      method: "POST",
+    });
+    await throwIfError(response);
+    return response.json() as Promise<{ report_ready: boolean }>;
+  },
+
+  /**
+   * Download generated report PDF.
+   */
+  async downloadReport(matchId: string, filename = "Job_Match_Report.pdf"): Promise<void> {
+    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/report`);
+    await throwIfError(response);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   },
 };

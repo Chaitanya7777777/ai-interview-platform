@@ -426,7 +426,11 @@ export default function DashboardPage() {
           {matchStats && matchStats.recent_matches.length > 0 && (
             <div className="space-y-1">
               {matchStats.recent_matches.map((m) => (
-                <div key={m.id} className="hover-row flex items-center gap-3">
+                <Link
+                  key={m.id}
+                  href={`/job-match/${m.id}`}
+                  className="hover-row flex items-center gap-3 text-foreground hover:text-foreground transition-colors"
+                >
                   <div className="h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
                     <Briefcase size={13} className="text-primary" />
                   </div>
@@ -439,7 +443,7 @@ export default function DashboardPage() {
                   <span className={cn("text-sm font-semibold tabular-nums shrink-0", scoreClass(m.match_score))}>
                     {m.match_score}%
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           )}

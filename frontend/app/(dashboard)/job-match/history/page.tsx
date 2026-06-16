@@ -70,7 +70,10 @@ function HistoryRow({ item }: { item: JobMatchHistoryItem }) {
     item.summary.slice(0, 100);
 
   return (
-    <div className="hover-row flex items-center gap-4">
+    <Link
+      href={`/job-match/${item.id}`}
+      className="hover-row flex items-center gap-4 text-foreground hover:text-foreground transition-colors"
+    >
       {/* Icon */}
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
         <Briefcase size={16} className="text-primary" />
@@ -92,16 +95,21 @@ function HistoryRow({ item }: { item: JobMatchHistoryItem }) {
       </div>
 
       {/* Score + ATS + time */}
-      <div className="flex flex-col items-end gap-1 shrink-0">
-        <span className={cn("score-pill tabular-nums", scoreClass(item.match_score))}>
-          {item.match_score}%
-        </span>
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-          <Clock size={10} />
-          {relativeTime(item.created_at)}
+      <div className="flex items-center gap-4 shrink-0">
+        <div className="flex flex-col items-end gap-1">
+          <span className={cn("score-pill tabular-nums", scoreClass(item.match_score))}>
+            {item.match_score}%
+          </span>
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+            <Clock size={10} />
+            {relativeTime(item.created_at)}
+          </span>
+        </div>
+        <span className="text-xs font-semibold text-primary hidden md:inline-flex items-center gap-0.5 hover:underline pl-2 border-l border-border/20">
+          View Report →
         </span>
       </div>
-    </div>
+    </Link>
   );
 }
 
