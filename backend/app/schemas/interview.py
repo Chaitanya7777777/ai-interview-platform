@@ -233,5 +233,8 @@ class InterviewDetailOut(BaseModel):
     overall_score: int | None
     summary: str | None
     questions: list[InterviewQuestionOut]
+    # ai_metadata sub-fields exposed for frontend UX
+    origin: str = "manual"              # "manual" | "job_match"
+    job_match_snapshot: dict | None = None   # {match_score, focus_topics} when origin=="job_match"
     created_at: datetime
     updated_at: datetime

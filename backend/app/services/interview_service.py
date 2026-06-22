@@ -373,6 +373,8 @@ async def get_interview_detail(
         overall_score=interview.overall_score,
         summary=interview.summary,
         questions=question_outs,
+        origin=ai_meta.get("origin", "manual"),
+        job_match_snapshot=ai_meta.get("job_match_snapshot"),
         created_at=interview.created_at,
         updated_at=interview.updated_at,
     )

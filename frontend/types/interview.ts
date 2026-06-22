@@ -73,6 +73,11 @@ export type InterviewHistoryPage = {
 
 // ── Detail ────────────────────────────────────────────────────────────────────
 
+export type JobMatchSnapshot = {
+  match_score: number;
+  focus_topics: string[];
+};
+
 export type InterviewDetail = {
   id: string;
   role: string | null;
@@ -81,6 +86,8 @@ export type InterviewDetail = {
   overall_score: number | null;
   summary: string | null;
   questions: InterviewQuestion[];
+  origin: "manual" | "job_match";              // session mode
+  job_match_snapshot: JobMatchSnapshot | null; // set when origin==="job_match"
   created_at: string;
   updated_at: string;
 };

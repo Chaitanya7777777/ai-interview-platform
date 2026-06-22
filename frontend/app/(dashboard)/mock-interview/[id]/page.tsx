@@ -8,7 +8,7 @@ import { interviewService } from "@/services/interview.service";
 import type { InterviewDetail, InterviewQuestion, QuestionEvaluation } from "@/types/interview";
 import {
   Loader2, ChevronRight, CheckCircle2, AlertCircle,
-  Star, ArrowRight, Target, Lightbulb,
+  Star, ArrowRight, Target, Lightbulb, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -198,7 +198,14 @@ export default function InterviewSessionPage() {
             {interview.status === "completed" ? "Completed" : "In progress"}
           </span>
         </div>
-        <p className="text-sm text-muted-foreground capitalize">{interview.difficulty} difficulty</p>
+        <p className="text-sm text-muted-foreground capitalize">
+          {interview.difficulty} difficulty
+          {interview.origin === "job_match" && (
+            <span className="ml-2 inline-flex items-center gap-1 text-primary text-xs font-medium">
+              <Sparkles size={11} /> Job Match Practice
+            </span>
+          )}
+        </p>
       </div>
 
       <ProgressBar answered={answeredCount} total={questions.length} />

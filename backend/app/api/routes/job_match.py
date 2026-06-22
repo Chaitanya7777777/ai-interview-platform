@@ -390,10 +390,16 @@ async def get_job_match_interview_context(
     else:
         recommended_difficulty = "easy"
 
-    # Focus topics derived from missing keywords & missing skills
+    # Focus topics derived from missing keywords & missing skills — deduped, case-insensitive
     missing_keywords = [k for k in match_row.missing_keywords if k and k.strip()]
     missing_skills = [s for s in match_row.missing_skills if s and s.strip()]
-    focus_topics = (missing_keywords + missing_skills)[:5]
+    seen_lower: set[str] = set()
+    focus_topics: list[str] = []
+    for term in missing_keywords + missing_skills:
+        if term.lower() not in seen_lower:
+            seen_lower.add(term.lower())
+            focus_topics.append(term)
+    focus_topics = focus_topics[:5]
 
     return JobMatchInterviewContext(
         job_match_id=match_row.id,
