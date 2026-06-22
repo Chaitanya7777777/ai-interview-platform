@@ -71,6 +71,17 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 | Score trend visualization | Shows score progression over time | Makes improvement patterns visible |
 | Recommended roles and skill gaps | Aggregates role suggestions and missing skills | Keeps learning priorities clear |
 | Analytics summary cards | Highlights key metrics in one view | Improves decision-making speed for users |
+
+### Job Match Analyzer
+
+| Capability | What it does | Why it matters |
+|---|---|---|
+| ATS Match & Evaluation | Scores resume against a target job description (300-10,000 chars) | Identifies real-world ATS compatibility and role fit |
+| Keyword & Skill Gap Analysis | Extracts missing keywords and skills | Helps candidates optimize their resume content for specific roles |
+| Storage-backed Job Descriptions | Stores full job descriptions in Supabase Storage | Keeps original context retrievable for future prep or reporting |
+| Premium PDF Reports | Generates polished PDF summaries utilizing ReportLab | Provides a shareable, offline-accessible analysis summary |
+| Interview Integration | Pre-populates mock interview sessions based on job match details | Targets exact gap areas and topics identified during the match |
+
 ### Infrastructure
 
 | Capability | What it does | Why it matters |
@@ -174,10 +185,10 @@ flowchart TD
 | Layer | Technologies |
 |---|---|
 | Frontend | Next.js 16, TypeScript, Tailwind CSS |
-| Backend | FastAPI, SQLAlchemy Async, Alembic, Pydantic v2, AsyncPG |
+| Backend | FastAPI, SQLAlchemy Async, Alembic, Pydantic v2, AsyncPG, ReportLab |
 | Database | PostgreSQL |
 | Authentication | Supabase Auth |
-| Storage | Supabase Storage |
+| Storage | Supabase Storage (Resumes & Job Descriptions) |
 | AI | Groq API, Llama models |
 | Hosting | Vercel, Render |
 
@@ -526,6 +537,65 @@ Use this header for protected backend routes that require a verified user sessio
 }
 ```
 
+### Job Match API
+
+#### Create Job Match
+
+```http
+POST /api/v1/job-match
+Content-Type: application/json
+Authorization: Bearer <supabase_jwt>
+```
+
+Request:
+```json
+{
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "job_description": "We are looking for a Software Engineer with experience in FastAPI, Next.js, and PostgreSQL..."
+}
+```
+
+Response:
+```json
+{
+  "id": "2b0a3c9d-8cf4-4b46-99f0-7b1b77f5e2c2",
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "resume_filename": "resume.pdf",
+  "match_score": 85,
+  "ats_score": 80,
+  "strengths": ["Strong backend fundamentals", "Good SQL schema understanding"],
+  "missing_keywords": ["JWKS", "Alembic migrations"],
+  "missing_skills": ["OAuth2", "Docker"],
+  "recommendations": ["Highlight your async database operations and migrations"],
+  "role_fit": "Strong match for mid-level backend engineer",
+  "interview_readiness": "Ready to practice core backend and database questions",
+  "summary": "The candidate has most core skills, but lacks containerization experience...",
+  "job_title": "Software Engineer",
+  "company_name": "Tech Corp",
+  "job_description_preview": "We are looking for a Software Engineer...",
+  "has_stored_jd": true,
+  "created_at": "2026-06-22T15:51:55Z"
+}
+```
+
+#### Download Job Match PDF Report
+
+```http
+GET /api/v1/job-match/{job_match_id}/report
+Authorization: Bearer <supabase_jwt>
+```
+
+Returns the generated PDF report stream.
+
+#### Get Job Match History
+
+```http
+GET /api/v1/job-match/history?page=1&page_size=10
+Authorization: Bearer <supabase_jwt>
+```
+
+Returns paginated job match evaluations for the logged-in user.
+
 ---
 
 ## Roadmap
@@ -533,7 +603,8 @@ Use this header for protected backend routes that require a verified user sessio
 - [x] AI Mock Interviews
 - [ ] Real-time voice interviews
 - [ ] AI answer evaluation
-- [ ] Resume ATS optimization
+- [x] Resume ATS optimization & Job Matcher
+- [x] Downloadable PDF Match Reports
 - [ ] Resume templates
 - [ ] AI-generated cover letters
 - [x] User analytics dashboard
