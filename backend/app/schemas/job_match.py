@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ── Request ───────────────────────────────────────────────────────────────────
@@ -120,9 +120,9 @@ class JobMatchHistoryItem(BaseModel):
     resume_id: UUID
     resume_filename: str            # file_name from the joined resume row
     match_score: int
-    ats_score: int
-    role_fit: str
-    summary: str
+    ats_score: int = 0              # nullable in older rows — default to 0
+    role_fit: str = ""              # nullable in older rows — default to empty
+    summary: str = ""              # nullable in older rows — default to empty
 
     # Storage metadata — None for pre-0006 rows
     job_title: str | None = None
@@ -131,6 +131,20 @@ class JobMatchHistoryItem(BaseModel):
     has_stored_jd: bool = False
 
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_nulls(cls, v: object) -> object:
+        """Coerce DB NULLs to safe defaults before field validation."""
+        if isinstance(v, dict):
+            v = dict(v)
+            if v.get("ats_score") is None:
+                v["ats_score"] = 0
+            if v.get("role_fit") is None:
+                v["role_fit"] = ""
+            if v.get("summary") is None:
+                v["summary"] = ""
+        return v
 
 
 class JobMatchHistoryPage(BaseModel):
