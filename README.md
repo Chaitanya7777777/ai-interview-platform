@@ -82,6 +82,16 @@ Analyze resumes with AI, identify skill gaps, generate actionable feedback, and 
 | Premium PDF Reports | Generates polished PDF summaries utilizing ReportLab | Provides a shareable, offline-accessible analysis summary |
 | Interview Integration | Pre-populates mock interview sessions based on job match details | Targets exact gap areas and topics identified during the match |
 
+### Job Match to Practice Interview Integration
+
+| Capability | What it does | Why it matters |
+|---|---|---|
+| Connected Workflow | Allows users to click "Practice Interview" directly from any Job Match | Converts analysis insights immediately into targeted practice |
+| Focus Topics Extraction | Extracts key weaknesses and missing keywords as interview target topics | Focuses the practice session on the exact areas that need improvement |
+| Interview pre-fill | Auto-configures role, difficulty, and selected resume on the setup screen | Lowers setup friction and starts the session with one click |
+| Targeted AI Question Gen | Modifies prompt to focus questions specifically on the target topics | Provides a highly relevant, customized preparation experience |
+| Before/After Score tracking | Tracks skill progression across the target topics | Visually demonstrates improvement in the results dashboard |
+
 ### Infrastructure
 
 | Capability | What it does | Why it matters |
@@ -266,6 +276,8 @@ This flow keeps the system modular and easier to debug while preserving a reliab
 | CORS configuration | Explicitly configured cross-origin requests between frontend and backend |
 | Render + Vercel production deployment | Separated frontend and API hosting for clean production rollout |
 | Environment management | Kept secrets and runtime values isolated through environment variables |
+| Next.js Hydration & Suspense | Wrapped `useSearchParams()` calls in `<Suspense>` boundaries to fix build failures on Vercel |
+| Pydantic ValidationError on Production Nulls | Standardized model validation on historical items to handle optional/nullable fields cleanly |
 
 ---
 
@@ -596,11 +608,74 @@ Authorization: Bearer <supabase_jwt>
 
 Returns paginated job match evaluations for the logged-in user.
 
+#### Get Job Match Interview Context
+
+```http
+GET /api/v1/job-match/{job_match_id}/interview-context
+Authorization: Bearer <supabase_jwt>
+```
+
+Returns context extracted from the job match analysis (missing skills, recommended role, targeted focus topics) to initialize a customized practice interview.
+
+Response:
+```json
+{
+  "job_match_id": "2b0a3c9d-8cf4-4b46-99f0-7b1b77f5e2c2",
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "resume_filename": "resume.pdf",
+  "target_role": "Software Engineer",
+  "company_name": "Tech Corp",
+  "match_score": 85,
+  "ats_score": 80,
+  "focus_topics": ["Docker", "OAuth2", "JWKS", "Alembic migrations"]
+}
+```
+
+### Mock Interview API
+
+#### Generate Interview
+
+```http
+POST /api/v1/interview
+Content-Type: application/json
+Authorization: Bearer <supabase_jwt>
+```
+
+Request (Standard Mode):
+```json
+{
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "role": "Backend Engineer",
+  "difficulty": "medium"
+}
+```
+
+Request (Job Match Practice Mode):
+```json
+{
+  "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+  "role": "Software Engineer",
+  "difficulty": "medium",
+  "mode": "job_match",
+  "job_match_context": {
+    "job_match_id": "2b0a3c9d-8cf4-4b46-99f0-7b1b77f5e2c2",
+    "resume_id": "8a0d2c8c-7cf4-4b46-99f0-7b1b77f5e2c1",
+    "resume_filename": "resume.pdf",
+    "target_role": "Software Engineer",
+    "company_name": "Tech Corp",
+    "match_score": 85,
+    "ats_score": 80,
+    "focus_topics": ["Docker", "OAuth2", "JWKS", "Alembic migrations"]
+  }
+}
+```
+
 ---
 
 ## Roadmap
 
 - [x] AI Mock Interviews
+- [x] Job Match -> Practice Interview Workflow
 - [ ] Real-time voice interviews
 - [ ] AI answer evaluation
 - [x] Resume ATS optimization & Job Matcher
