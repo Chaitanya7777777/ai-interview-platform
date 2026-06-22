@@ -350,6 +350,8 @@ class AIService:
         candidate_context: str,
         role_focus: str,
         difficulty: str,
+        mode: str = "standard",
+        focus_topics: list[str] | None = None,
     ) -> InterviewQuestionSet:
         """
         Generate 7 interview questions tailored to the candidate's resume and role.
@@ -387,6 +389,24 @@ class AIService:
                 f"Failed to build interview question prompt: {exc}. "
                 "This is a server configuration error."
             ) from exc
+
+        if mode == "job_match" and focus_topics:
+            topics_str = ", ".join(f"'{t}'" for t in focus_topics)
+            prompt += (
+                f"\n\n--- JOB MATCH PRACTICE MODE ENABLED ---\n"
+                f"You MUST generate a highly targeted, structured interview practice session focusing on these weak areas / focus topics:\n"
+                f"[{topics_str}]\n\n"
+                f"Follow this EXACT question sequence and assign the focus of each question:\n"
+                f"1. Question 1 (Warmup): A general, light technical/situational warmup question. Set focus: null.\n"
+                f"2. Question 2 (Focus): Deep dive into one of the weak areas in the list above. You must set 'focus' to the exact name of the topic chosen from the list.\n"
+                f"3. Question 3 (Standard): A normal interview question suitable for the role. Set focus: null.\n"
+                f"4. Question 4 (Focus): Deep dive into another weak area from the list above. Set 'focus' to the exact topic name from the list.\n"
+                f"5. Question 5 (Standard): A normal interview question suitable for the role. Set focus: null.\n"
+                f"6. Question 6 (Focus): Deep dive into a third weak area from the list above. Set 'focus' to the exact topic name from the list.\n"
+                f"7. Question 7 (Stretch): A challenging stretch technical question for this role. Set focus: null.\n\n"
+                f"Ensure the JSON output strictly includes the 'focus' field for every question object matching the schema: "
+                f'{{"question": "...", "category": "...", "difficulty": "...", "focus": "...", "expected_answer_points": [...]}}'
+            )
 
         logger.debug(
             "[AI DEBUG] Interview question prompt built (first 300 chars):\n%s",

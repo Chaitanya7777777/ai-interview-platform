@@ -222,11 +222,17 @@ export default function InterviewSessionPage() {
         <div className="space-y-5">
           {/* Question card */}
           <div className="rounded-2xl border border-border/40 bg-card px-6 py-6 space-y-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
                 {currentIdx + 1}
               </div>
               <CategoryPill category={currentQ.category} />
+              {currentQ.focus && (
+                <span className="flex items-center gap-1 rounded-full bg-primary/10 border border-primary/25 px-2.5 py-0.5 text-[10px] font-semibold text-primary uppercase tracking-wide">
+                  <Target size={9} />
+                  {currentQ.focus}
+                </span>
+              )}
               <span className="ml-auto text-xs text-muted-foreground capitalize">{currentQ.difficulty}</span>
             </div>
             <p className="text-base font-medium leading-snug">{currentQ.question}</p>

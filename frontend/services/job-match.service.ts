@@ -105,6 +105,19 @@ export type JobDescriptionView = {
   source: "storage" | "legacy";   // Where the text came from
 };
 
+export type JobMatchInterviewContext = {
+  job_match_id: string;
+  resume_id: string;
+  resume_filename: string;
+  target_role: string | null;
+  company_name: string | null;
+  match_score: number;
+  missing_keywords: string[];
+  skill_gaps: string[];
+  focus_topics: string[];
+  recommended_difficulty: "easy" | "medium" | "hard";
+};
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const API_BASE_URL =
@@ -243,5 +256,15 @@ export const jobMatchService = {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Get interview preparation context for a job match.
+   * Returns focus topics, recommended difficulty, and match metadata.
+   */
+  async getInterviewContext(matchId: string): Promise<JobMatchInterviewContext> {
+    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/interview-context`);
+    await throwIfError(response);
+    return response.json() as Promise<JobMatchInterviewContext>;
   },
 };

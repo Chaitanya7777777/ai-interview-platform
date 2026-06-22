@@ -14,6 +14,7 @@ export type InterviewQuestion = {
   difficulty: "easy" | "medium" | "hard";
   expected_answer_points: string[];
   order_index: number;
+  focus: string | null;             // Focus topic for job_match mode questions
   // Populated after answer submission
   user_answer: string | null;
   ai_feedback: string | null;
@@ -86,10 +87,16 @@ export type InterviewDetail = {
 
 // ── Request payloads ──────────────────────────────────────────────────────────
 
+export type JobMatchContextPayload = {
+  focus_topics: string[];
+};
+
 export type GenerateInterviewPayload = {
   resume_id: string;
   role: string;
   difficulty: "easy" | "medium" | "hard";
+  mode?: "standard" | "job_match";
+  job_match_context?: JobMatchContextPayload;
 };
 
 export type EvaluateAnswerPayload = {

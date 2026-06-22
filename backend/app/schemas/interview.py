@@ -58,6 +58,10 @@ class InterviewMessageRead(InterviewMessageCreate):
 
 # ── Request schemas ───────────────────────────────────────────────────────────
 
+class JobMatchContextRequest(BaseModel):
+    focus_topics: list[str] = Field(default_factory=list)
+
+
 class GenerateInterviewRequest(BaseModel):
     """Input for POST /api/v1/interviews/generate."""
 
@@ -66,6 +70,14 @@ class GenerateInterviewRequest(BaseModel):
     difficulty: Literal["easy", "medium", "hard"] = Field(
         default="medium",
         description="Interview difficulty level",
+    )
+    mode: Literal["standard", "job_match"] = Field(
+        default="standard",
+        description="Mode of interview generation",
+    )
+    job_match_context: JobMatchContextRequest | None = Field(
+        default=None,
+        description="Optional job match context containing focus topics",
     )
 
 
@@ -98,6 +110,7 @@ class InterviewQuestionOut(BaseModel):
     difficulty: str
     expected_answer_points: list[str] = Field(default_factory=list)
     order_index: int
+    focus: str | None = None
 
     # Filled after user submits an answer
     user_answer: str | None = None
@@ -130,6 +143,7 @@ class InterviewQuestionOut(BaseModel):
             }
             data["expected_answer_points"] = data.get("expected_answer_points") or []
             data["improvement_suggestions"] = data.get("improvement_suggestions") or []
+            data["focus"] = getattr(obj, "focus", None)
             return super().model_validate(
                 data, strict=strict, from_attributes=False, context=context
             )
@@ -139,6 +153,7 @@ class InterviewQuestionOut(BaseModel):
             obj = dict(obj)  # copy — never mutate caller's dict
             obj["expected_answer_points"] = obj.get("expected_answer_points") or []
             obj["improvement_suggestions"] = obj.get("improvement_suggestions") or []
+            obj["focus"] = obj.get("focus")
 
         return super().model_validate(
             obj, strict=strict, from_attributes=from_attributes, context=context

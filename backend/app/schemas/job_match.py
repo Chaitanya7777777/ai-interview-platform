@@ -16,6 +16,7 @@ JobDescriptionViewResponse : GET /api/v1/job-match/{id}/job-description
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -179,3 +180,22 @@ class JobDescriptionViewResponse(BaseModel):
     job_title: str | None = None
     company_name: str | None = None
     source: str = "storage"         # "storage" | "legacy" — for client awareness
+
+
+class JobMatchInterviewContext(BaseModel):
+    job_match_id: UUID
+    resume_id: UUID
+    resume_filename: str
+
+    target_role: str | None = None
+    company_name: str | None = None
+
+    match_score: int
+
+    missing_keywords: list[str] = Field(default_factory=list)
+    skill_gaps: list[str] = Field(default_factory=list)
+
+    focus_topics: list[str] = Field(default_factory=list)
+
+    recommended_difficulty: Literal["easy", "medium", "hard"]
+

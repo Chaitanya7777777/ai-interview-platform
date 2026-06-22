@@ -55,23 +55,38 @@ async def create_interview_session(
     role: str,
     difficulty: str,
     ai_questions: list[AIQuestion],
+    mode: str = "standard",
+    job_match_context: dict | None = None,
 ) -> InterviewSessionOut:
     """
     Create an Interview row + bulk-insert InterviewQuestion rows.
 
     Parameters
     ----------
-    session      : active async SQLAlchemy session
-    profile_id   : UUID of the owning Profile
-    resume_id    : UUID of the source Resume
-    role         : target job role string
-    difficulty   : "easy" | "medium" | "hard"
-    ai_questions : validated InterviewQuestionSet.questions from the AI service
+    session            : active async SQLAlchemy session
+    profile_id         : UUID of the owning Profile
+    resume_id          : UUID of the source Resume
+    role               : target job role string
+    difficulty         : "easy" | "medium" | "hard"
+    ai_questions       : validated InterviewQuestionSet.questions from the AI service
+    mode               : "standard" | "job_match"
+    job_match_context  : optional dict with match_score and focus_topics snapshot
 
     Returns
     -------
     InterviewSessionOut with the new interview_id and all questions.
     """
+    # Build ai_metadata for job_match mode
+    ai_metadata: dict | None = None
+    if mode == "job_match" and job_match_context:
+        # Capture per-question focus from AI-generated questions
+        question_focuses = [q.focus for q in ai_questions]
+        ai_metadata = {
+            "origin": "job_match",
+            "job_match_snapshot": job_match_context,
+            "question_focuses": question_focuses,
+        }
+
     interview = Interview(
         profile_id=profile_id,
         resume_id=resume_id,
@@ -80,6 +95,7 @@ async def create_interview_session(
         difficulty=difficulty,
         interview_type="mock",
         status="active",
+        ai_metadata=ai_metadata,
     )
     session.add(interview)
     await session.flush()  # get interview.id
@@ -100,18 +116,39 @@ async def create_interview_session(
     await session.flush()
 
     logger.info(
-        "Created interview %s for profile %s (%d questions)",
+        "Created interview %s for profile %s (%d questions, mode=%s)",
         interview.id,
         profile_id,
         len(question_rows),
+        mode,
     )
+
+    # Build question output, injecting focus from ai_metadata if available
+    question_focuses = (ai_metadata or {}).get("question_focuses", [])
+    question_outs: list[InterviewQuestionOut] = []
+    for idx, q in enumerate(question_rows):
+        q_dict = {
+            "id": q.id,
+            "question": q.question,
+            "category": q.category,
+            "difficulty": q.difficulty,
+            "expected_answer_points": q.expected_answer_points or [],
+            "order_index": q.order_index,
+            "focus": question_focuses[idx] if idx < len(question_focuses) else None,
+            "user_answer": None,
+            "ai_feedback": None,
+            "ai_score": None,
+            "ideal_answer": None,
+            "improvement_suggestions": [],
+        }
+        question_outs.append(InterviewQuestionOut.model_validate(q_dict))
 
     return InterviewSessionOut(
         interview_id=interview.id,
         role=role,
         difficulty=difficulty,
         status=interview.status,
-        questions=[InterviewQuestionOut.model_validate(q) for q in question_rows],
+        questions=question_outs,
         created_at=interview.created_at,
     )
 
@@ -304,6 +341,30 @@ async def get_interview_detail(
     if interview.profile_id != profile_id:
         raise PermissionError("You do not own this interview.")
 
+    # Inject per-question focus from ai_metadata if present (job_match mode)
+    ai_meta = getattr(interview, "ai_metadata", None) or {}
+    question_focuses = ai_meta.get("question_focuses", [])
+
+    question_outs: list[InterviewQuestionOut] = []
+    for q in interview.questions:
+        idx = q.order_index
+        focus = question_focuses[idx] if idx < len(question_focuses) else None
+        q_dict = {
+            "id": q.id,
+            "question": q.question,
+            "category": q.category,
+            "difficulty": q.difficulty,
+            "expected_answer_points": q.expected_answer_points or [],
+            "order_index": q.order_index,
+            "focus": focus,
+            "user_answer": q.user_answer,
+            "ai_feedback": q.ai_feedback,
+            "ai_score": q.ai_score,
+            "ideal_answer": q.ideal_answer,
+            "improvement_suggestions": q.improvement_suggestions or [],
+        }
+        question_outs.append(InterviewQuestionOut.model_validate(q_dict))
+
     return InterviewDetailOut(
         id=interview.id,
         role=getattr(interview, "role", None) or interview.title,
@@ -311,7 +372,7 @@ async def get_interview_detail(
         status=interview.status,
         overall_score=interview.overall_score,
         summary=interview.summary,
-        questions=[InterviewQuestionOut.model_validate(q) for q in interview.questions],
+        questions=question_outs,
         created_at=interview.created_at,
         updated_at=interview.updated_at,
     )

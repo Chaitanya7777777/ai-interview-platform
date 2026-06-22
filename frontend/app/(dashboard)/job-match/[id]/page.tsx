@@ -418,10 +418,8 @@ export default function JobMatchDetailPage() {
 
         <button
           onClick={() => {
-            // Safe pre-fill route navigation (placeholder payload pathing ready)
-            toast.success("Starting Mock Interview setup for: " + (data.job_title || "this role"));
             startTransition(() => {
-              router.push(`/mock-interview?resume=${data.resume_id}&role=${encodeURIComponent(data.job_title || "")}`);
+              router.push(`/mock-interview?jobMatch=${params.id}`);
             });
           }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"

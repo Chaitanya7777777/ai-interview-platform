@@ -111,11 +111,18 @@ async def generate_interview(
             candidate_context += f"\nAreas to improve: {', '.join(skills[:5])}"
 
     # Generate questions via AI
+    focus_topics = (
+        body.job_match_context.focus_topics
+        if body.mode == "job_match" and body.job_match_context
+        else None
+    )
     try:
         question_set = await ai_service.generate_interview_questions(
             candidate_context=candidate_context,
             role_focus=body.role,
             difficulty=body.difficulty,
+            mode=body.mode,
+            focus_topics=focus_topics,
         )
     except Exception as exc:
         logger.error("AI question generation failed: %s", exc)
@@ -130,6 +137,13 @@ async def generate_interview(
             detail="AI returned no questions. Please try again.",
         )
 
+    # Build optional job_match snapshot for metadata persistence
+    job_match_context_dict: dict | None = None
+    if body.mode == "job_match" and body.job_match_context:
+        job_match_context_dict = {
+            "focus_topics": body.job_match_context.focus_topics,
+        }
+
     # Persist to DB
     result = await create_interview_session(
         session,
@@ -138,6 +152,8 @@ async def generate_interview(
         role=body.role,
         difficulty=body.difficulty,
         ai_questions=question_set.questions,
+        mode=body.mode,
+        job_match_context=job_match_context_dict,
     )
     await session.commit()
     return result

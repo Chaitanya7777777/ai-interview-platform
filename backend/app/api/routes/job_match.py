@@ -56,6 +56,7 @@ from app.schemas.job_match import (
     JobMatchHistoryPage,
     JobMatchRequest,
     JobMatchResponse,
+    JobMatchInterviewContext,
 )
 from app.services.job_match_db_service import (
     get_job_match_dashboard_stats,
@@ -347,5 +348,65 @@ async def get_report_download_redirect(
         )
 
     return RedirectResponse(url=signed_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get(
+    "/{match_id}/interview-context",
+    response_model=JobMatchInterviewContext,
+    summary="Get job match context for practice interview",
+    description="Loads match score, target role, company, and generates focus topics for custom prep.",
+)
+async def get_job_match_interview_context(
+    match_id: UUID,
+    current_user: SupabaseUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> JobMatchInterviewContext:
+    profile = await get_or_create_profile(session, current_user)
+
+    stmt = (
+        select(JobMatch, Resume.file_name)
+        .join(Resume, JobMatch.resume_id == Resume.id)
+        .where(
+            JobMatch.id == match_id,
+            JobMatch.profile_id == profile.id,
+        )
+    )
+    res = await session.execute(stmt)
+    row = res.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job match not found or access denied.",
+        )
+
+    match_row, resume_filename = row
+
+    # Determine recommended difficulty
+    score = match_row.match_score
+    if score >= 90:
+        recommended_difficulty = "hard"
+    elif score >= 75:
+        recommended_difficulty = "medium"
+    else:
+        recommended_difficulty = "easy"
+
+    # Focus topics derived from missing keywords & missing skills
+    missing_keywords = [k for k in match_row.missing_keywords if k and k.strip()]
+    missing_skills = [s for s in match_row.missing_skills if s and s.strip()]
+    focus_topics = (missing_keywords + missing_skills)[:5]
+
+    return JobMatchInterviewContext(
+        job_match_id=match_row.id,
+        resume_id=match_row.resume_id,
+        resume_filename=resume_filename,
+        target_role=match_row.job_title,
+        company_name=match_row.company_name,
+        match_score=score,
+        missing_keywords=missing_keywords,
+        skill_gaps=missing_skills,
+        focus_topics=focus_topics,
+        recommended_difficulty=recommended_difficulty,
+    )
+
 
 

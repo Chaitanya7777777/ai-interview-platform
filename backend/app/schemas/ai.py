@@ -27,6 +27,7 @@ class InterviewQuestion(BaseModel):
     category: str
     difficulty: Literal["easy", "medium", "hard"]
     expected_answer_points: list[str]
+    focus: str | None = None
 
 
 class InterviewQuestionSet(BaseModel):
