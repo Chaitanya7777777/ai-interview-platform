@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ function Step({ n, done, label }: { n: number; done: boolean; label: string }) {
   );
 }
 
-export default function MockInterviewPage() {
+function MockInterviewSetup() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobMatchId = searchParams.get("jobMatch");
@@ -353,5 +353,18 @@ export default function MockInterviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MockInterviewPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center gap-2 text-muted-foreground text-sm py-10">
+        <span className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        Loading...
+      </div>
+    }>
+      <MockInterviewSetup />
+    </Suspense>
   );
 }
