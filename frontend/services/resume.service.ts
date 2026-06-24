@@ -3,6 +3,13 @@
  * -----------------
  * Frontend service for resume upload, AI analysis, and history fetching.
  *
+ * Upload (multipart/form-data) intentionally bypasses retry-fetch —
+ * file uploads are NOT retried automatically. On failure the caller sees
+ * "Upload interrupted. Please try again." and must re-submit explicitly.
+ *
+ * All other calls (history, download, delete) use resilientFetch with
+ * automatic retry on transient failures.
+ *
  * Usage — upload (text only):
  *   const result = await resumeService.uploadResume(file);
  *
@@ -16,6 +23,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { resilientFetch, TIMEOUT } from "@/services/retry-fetch";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +123,11 @@ export const resumeService = {
   /**
    * Upload a resume file, extract text, persist to DB, optionally analyse.
    *
+   * ⚠️  FILE UPLOADS ARE NOT RETRIED.
+   * Multipart/form-data requests are expensive and non-idempotent without a
+   * server-side idempotency guarantee. If the upload fails, the caller
+   * receives "Upload interrupted. Please try again." and must re-submit.
+   *
    * @param file     File from an <input type="file"> element.
    * @param options  { analyse: boolean } — defaults to false.
    * @returns        ResumeUploadResponse including the new resume_id.
@@ -135,11 +148,17 @@ export const resumeService = {
 
     const url = `${RESUME_BASE_URL}/upload${analyse ? "?analyse=true" : ""}`;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
+    // ── Intentionally NOT using resilientFetch for multipart uploads ──────────
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+    } catch {
+      throw new Error("Upload interrupted. Please try again.");
+    }
 
     await throwIfError(response);
     return response.json() as Promise<ResumeUploadResponse>;
@@ -147,6 +166,7 @@ export const resumeService = {
 
   /**
    * Fetch the authenticated user's paginated resume history.
+   * Uses resilientFetch — retries automatically on transient failures.
    *
    * @param options  { page, pageSize } — both default to 1 / 10.
    * @returns        ResumeHistoryPage with items and pagination metadata.
@@ -161,13 +181,17 @@ export const resumeService = {
 
     const url = `${RESUME_BASE_URL}/history?page=${page}&page_size=${pageSize}`;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    const response = await resilientFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { timeoutMs: TIMEOUT.HISTORY },
+    );
 
     await throwIfError(response);
     return response.json() as Promise<ResumeHistoryPage>;
@@ -175,19 +199,24 @@ export const resumeService = {
 
   /**
    * Delete a resume by ID.
+   * Uses resilientFetch — DELETE is idempotent so retrying is safe.
    *
    * @param id  UUID of the resume to delete.
    */
   async deleteResume(id: string): Promise<void> {
     const token = await getBearerToken();
 
-    const response = await fetch(`${RESUME_BASE_URL}/${id}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    const response = await resilientFetch(
+      `${RESUME_BASE_URL}/${id}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { timeoutMs: TIMEOUT.DEFAULT },
+    );
 
     if (response.status === 204 || response.ok) return;
     const data = await response.json().catch(() => ({ detail: response.statusText }));

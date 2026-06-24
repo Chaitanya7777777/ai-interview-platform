@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ConnectionAlert } from "@/components/ui/connection-alert";
 
 const NAV = [
   { name: "Dashboard",       href: "/dashboard",       icon: LayoutDashboard },
@@ -157,6 +158,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
+      {/* ── Global connection state overlay ──────────────────────────── */}
+      <ConnectionAlert />
       {/* ── Mobile overlay ────────────────────────────────────────────── */}
       {mobileOpen && (
         <div

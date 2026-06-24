@@ -105,44 +105,61 @@ function ChartTooltip({ active, payload }: {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-type State =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "success"; analytics: DashboardAnalytics; recent: ResumeHistoryItem[]; matchStats: JobMatchDashboardStats | null };
+type Data = {
+  analytics: DashboardAnalytics;
+  recent: ResumeHistoryItem[];
+  matchStats: JobMatchDashboardStats | null;
+};
+
+type LoadStatus = "loading" | "error" | "success";
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [state, setState] = useState<State>({ status: "loading" });
+
+  // Separate data from load status so stale data survives a failed refresh
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
+  const [data, setData] = useState<Data | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [isStale, setIsStale] = useState(false);
 
   const firstName =
     (user?.user_metadata?.full_name as string | undefined)?.split(" ")[0]
     ?? user?.email?.split("@")[0]
     ?? "there";
 
-  const load = () => {
-    setState({ status: "loading" });
+  const load = (isRefresh = false) => {
+    // On a background refresh, don't wipe existing data — just flag loading
+    if (!isRefresh) setLoadStatus("loading");
     Promise.all([
       dashboardService.getAnalytics(),
       resumeService.getHistory({ page: 1, pageSize: 6 }),
       jobMatchService.getDashboardStats().catch(() => null),
     ])
-      .then(([analytics, history, matchStats]) =>
-        setState({ status: "success", analytics, recent: history.items, matchStats })
-      )
-      .catch((err: unknown) =>
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Failed to load.",
-        })
-      );
+      .then(([analytics, history, matchStats]) => {
+        setData({ analytics, recent: history.items, matchStats });
+        setLoadStatus("success");
+        setIsStale(false);
+        setErrorMsg("");
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Failed to load.";
+        if (data) {
+          // Keep stale data visible — just show a badge
+          setIsStale(true);
+          setLoadStatus("success");
+        } else {
+          setLoadStatus("error");
+        }
+        setErrorMsg(msg);
+      });
   };
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loading    = state.status === "loading";
-  const analytics  = state.status === "success" ? state.analytics : null;
-  const recent     = state.status === "success" ? state.recent : [];
-  const matchStats = state.status === "success" ? state.matchStats : null;
+  const loading    = loadStatus === "loading";
+  const analytics  = data?.analytics ?? null;
+  const recent     = data?.recent ?? [];
+  const matchStats = data?.matchStats ?? null;
 
   // Build chart data sorted chronologically (day first, then submission order).
   // Key = "YYYY-MM-DD-{i}" — a composite string guaranteed to be unique per entry.
@@ -188,12 +205,27 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Error ────────────────────────────────────────────────────────── */}
-      {state.status === "error" && (
-        <div className="flex items-center justify-between rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
-          <p className="text-sm text-destructive">{state.message}</p>
+      {/* ── Stale data badge ────────────────────────────────────────── */}
+      {isStale && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-2.5">
+          <p className="text-sm text-amber-600 dark:text-amber-400">
+            Showing last available data &mdash; {errorMsg}
+          </p>
           <button
-            onClick={load}
+            onClick={() => load(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-600/80 dark:text-amber-400/80 hover:text-amber-600 transition-colors"
+          >
+            <RefreshCw size={12} /> Refresh
+          </button>
+        </div>
+      )}
+
+      {/* ── Error (only shown when no cached data exists) ────────────── */}
+      {loadStatus === "error" && (
+        <div className="flex items-center justify-between rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-destructive">{errorMsg}</p>
+          <button
+            onClick={() => load()}
             className="flex items-center gap-1.5 text-xs font-medium text-destructive/80 hover:text-destructive transition-colors"
           >
             <RefreshCw size={12} /> Retry

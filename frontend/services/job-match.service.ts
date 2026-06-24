@@ -8,9 +8,16 @@
  *   job_description_preview, and has_stored_jd fields.
  * - viewJobDescription() fetches the full JD text from the backend
  *   (which reads from Storage or legacy column and returns JSON).
+ *
+ * Reliability:
+ * - GET calls use resilientFetch with automatic retry + GET deduplication.
+ * - Mutation POSTs (runMatch, exportPDF) attach x-idempotency-key so retries
+ *   are safe — the server will return the cached result for the same key.
+ * - downloadReport uses raw fetch (blob response, not JSON) — retried safely.
  */
 
 import { supabase } from "@/lib/supabase";
+import { resilientFetch, TIMEOUT } from "@/services/retry-fetch";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -148,16 +155,50 @@ async function throwIfError(response: Response): Promise<void> {
   }
 }
 
-async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+/**
+ * Authenticated resilient GET — retried automatically on transient failures.
+ * GET requests with identical URLs within 2 s are deduplicated in memory.
+ */
+async function authGet(url: string, timeoutMs: number = TIMEOUT.DEFAULT): Promise<Response> {
   const token = await getBearerToken();
-  return fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
+  return resilientFetch(
+    url,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+    { timeoutMs },
+  );
+}
+
+/**
+ * Authenticated resilient POST.
+ * Pass idempotent=true for operations that must not generate duplicates on retry.
+ */
+async function authPost(
+  url: string,
+  body: unknown,
+  options: { timeoutMs?: number; idempotent?: boolean } = {},
+): Promise<Response> {
+  const token = await getBearerToken();
+  return resilientFetch(
+    url,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    {
+      timeoutMs: options.timeoutMs ?? TIMEOUT.DEFAULT,
+      idempotent: options.idempotent ?? false,
+    },
+  );
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -165,6 +206,9 @@ async function authFetch(url: string, init?: RequestInit): Promise<Response> {
 export const jobMatchService = {
   /**
    * Run a job match analysis.
+   *
+   * Idempotent: attaches x-idempotency-key so retries on transient failure
+   * return the cached result rather than generating a duplicate record.
    *
    * The backend:
    * 1. Uploads the JD to Supabase Storage (job-descriptions bucket)
@@ -174,9 +218,9 @@ export const jobMatchService = {
    * On a dedup hit within 24h, the existing storage object is reused.
    */
   async runMatch(payload: JobMatchRequest): Promise<JobMatchResult> {
-    const response = await authFetch(JOB_MATCH_URL, {
-      method: "POST",
-      body: JSON.stringify(payload),
+    const response = await authPost(JOB_MATCH_URL, payload, {
+      timeoutMs: TIMEOUT.INTERVIEW, // long — AI inference involved
+      idempotent: true,             // safe to retry: server deduplicates
     });
     await throwIfError(response);
     return response.json() as Promise<JobMatchResult>;
@@ -187,8 +231,9 @@ export const jobMatchService = {
    * History items use the DB preview column — no Storage fetches.
    */
   async getHistory(page = 1, pageSize = 10): Promise<JobMatchHistoryPage> {
-    const response = await authFetch(
-      `${JOB_MATCH_URL}/history?page=${page}&page_size=${pageSize}`
+    const response = await authGet(
+      `${JOB_MATCH_URL}/history?page=${page}&page_size=${pageSize}`,
+      TIMEOUT.HISTORY,
     );
     await throwIfError(response);
     return response.json() as Promise<JobMatchHistoryPage>;
@@ -198,7 +243,7 @@ export const jobMatchService = {
    * Fetch compact dashboard stats.
    */
   async getDashboardStats(): Promise<JobMatchDashboardStats> {
-    const response = await authFetch(`${JOB_MATCH_URL}/dashboard-stats`);
+    const response = await authGet(`${JOB_MATCH_URL}/dashboard-stats`, TIMEOUT.DASHBOARD);
     await throwIfError(response);
     return response.json() as Promise<JobMatchDashboardStats>;
   },
@@ -214,8 +259,9 @@ export const jobMatchService = {
    * @param matchId  UUID of the job match row
    */
   async viewJobDescription(matchId: string): Promise<JobDescriptionView> {
-    const response = await authFetch(
-      `${JOB_MATCH_URL}/${matchId}/job-description`
+    const response = await authGet(
+      `${JOB_MATCH_URL}/${matchId}/job-description`,
+      TIMEOUT.DETAIL,
     );
     await throwIfError(response);
     return response.json() as Promise<JobDescriptionView>;
@@ -225,27 +271,40 @@ export const jobMatchService = {
    * Fetch complete details of a specific job match.
    */
   async getJobMatchDetail(matchId: string): Promise<JobMatchDetailResult> {
-    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}`);
+    const response = await authGet(`${JOB_MATCH_URL}/${matchId}`, TIMEOUT.DETAIL);
     await throwIfError(response);
     return response.json() as Promise<JobMatchDetailResult>;
   },
 
   /**
    * Trigger PDF report generation.
+   *
+   * Idempotent: uses x-idempotency-key so retries don't produce duplicate exports.
    */
   async exportPDF(matchId: string): Promise<{ report_ready: boolean }> {
-    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/export`, {
-      method: "POST",
-    });
+    const response = await authPost(
+      `${JOB_MATCH_URL}/${matchId}/export`,
+      {},
+      { timeoutMs: TIMEOUT.PDF_EXPORT, idempotent: true },
+    );
     await throwIfError(response);
     return response.json() as Promise<{ report_ready: boolean }>;
   },
 
   /**
    * Download generated report PDF.
+   * Uses resilientFetch with a long PDF timeout — blob download, not JSON.
    */
   async downloadReport(matchId: string, filename = "Job_Match_Report.pdf"): Promise<void> {
-    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/report`);
+    const token = await getBearerToken();
+    const response = await resilientFetch(
+      `${JOB_MATCH_URL}/${matchId}/report`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      { timeoutMs: TIMEOUT.PDF_EXPORT },
+    );
     await throwIfError(response);
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
@@ -263,7 +322,10 @@ export const jobMatchService = {
    * Returns focus topics, recommended difficulty, and match metadata.
    */
   async getInterviewContext(matchId: string): Promise<JobMatchInterviewContext> {
-    const response = await authFetch(`${JOB_MATCH_URL}/${matchId}/interview-context`);
+    const response = await authGet(
+      `${JOB_MATCH_URL}/${matchId}/interview-context`,
+      TIMEOUT.DETAIL,
+    );
     await throwIfError(response);
     return response.json() as Promise<JobMatchInterviewContext>;
   },

@@ -93,25 +93,33 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
 
 function InterviewHistorySection() {
   const router = useRouter();
-  const [state, setState] = useState<
-    | { status: "loading" }
-    | { status: "error"; message: string }
-    | { status: "success"; data: InterviewHistoryPage }
-  >({ status: "loading" });
+  const [loadStatus, setLoadStatus] = useState<"loading" | "error" | "success">("loading");
+  const [historyData, setHistoryData] = useState<InterviewHistoryPage | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isStale, setIsStale] = useState(false);
   const [page, setPage]         = useState(1);
   const [collapsed, setCollapsed] = useState(false);
 
-  const load = (p = 1) => {
-    setState({ status: "loading" });
+  const load = (p = 1, isRefresh = false) => {
+    if (!isRefresh) setLoadStatus("loading");
     interviewService
       .getHistory(p, 10)
-      .then((data) => setState({ status: "success", data }))
-      .catch((err: unknown) =>
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Failed to load.",
-        })
-      );
+      .then((data) => {
+        setHistoryData(data);
+        setLoadStatus("success");
+        setIsStale(false);
+        setErrorMsg("");
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Failed to load.";
+        setErrorMsg(msg);
+        if (historyData) {
+          setIsStale(true);
+          setLoadStatus("success");
+        } else {
+          setLoadStatus("error");
+        }
+      });
   };
 
   useEffect(() => { load(page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -121,16 +129,13 @@ function InterviewHistorySection() {
     try {
       await interviewService.deleteInterview(id);
       toast.success("Interview deleted.");
-      setState((prev) => {
-        if (prev.status !== "success") return prev;
-        const items = prev.data.items.filter((it) => it.id !== id);
+      setHistoryData((prev) => {
+        if (!prev) return prev;
+        const items = prev.items.filter((it) => it.id !== id);
         return {
           ...prev,
-          data: {
-            ...prev.data,
-            items,
-            total_count: Math.max(0, (prev.data as InterviewHistoryPage & { total_count?: number }).total_count ?? 0 - 1),
-          },
+          items,
+          total_count: Math.max(0, (prev.total_count ?? 1) - 1),
         };
       });
     } catch (err) {
@@ -167,23 +172,34 @@ function InterviewHistorySection() {
       {/* Body — hidden when collapsed */}
       {!collapsed && (
         <>
-          {state.status === "loading" && (
+          {loadStatus === "loading" && (
             <div className="flex items-center justify-center py-10">
               <Loader2 size={18} className="animate-spin text-muted-foreground" />
             </div>
           )}
 
-          {state.status === "error" && (
+          {isStale && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-2.5">
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Showing last available data &mdash; {errorMsg}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => load(page, true)}>
+                <RotateCcw size={12} className="mr-1" /> Refresh
+              </Button>
+            </div>
+          )}
+
+          {loadStatus === "error" && (
             <div className="flex items-center gap-3 rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
               <AlertCircle size={14} className="text-destructive shrink-0" />
-              <p className="text-sm text-destructive flex-1">{state.message}</p>
+              <p className="text-sm text-destructive flex-1">{errorMsg}</p>
               <Button size="sm" variant="outline" onClick={() => load(page)}>
                 <RotateCcw size={12} className="mr-1" /> Retry
               </Button>
             </div>
           )}
 
-          {state.status === "success" && state.data.items.length === 0 && (
+          {loadStatus === "success" && historyData && historyData.items.length === 0 && (
             <div className="empty-state border border-dashed border-border/40 rounded-xl">
               <Target size={24} className="text-muted-foreground/30" />
               <p className="text-sm font-medium">No interviews yet</p>
@@ -194,10 +210,10 @@ function InterviewHistorySection() {
             </div>
           )}
 
-          {state.status === "success" && state.data.items.length > 0 && (
+          {loadStatus === "success" && historyData && historyData.items.length > 0 && (
             <>
               <div className="divide-y divide-border/30">
-                {state.data.items.map((item: InterviewHistoryItem) => (
+                {historyData.items.map((item: InterviewHistoryItem) => (
                   <div
                     key={item.id}
                     className="hover-row flex items-center gap-4 -mx-3"
@@ -271,15 +287,15 @@ function InterviewHistorySection() {
               </div>
 
               {/* Pagination */}
-              {(state.data.has_prev || state.data.has_next) && (
+              {historyData && (historyData.has_prev || historyData.has_next) && (
                 <div className="flex items-center justify-center gap-2 pt-2">
-                  <Button variant="outline" size="sm" disabled={!state.data.has_prev} onClick={() => setPage((p) => p - 1)}>
+                  <Button variant="outline" size="sm" disabled={!historyData.has_prev} onClick={() => setPage((p) => p - 1)}>
                     Previous
                   </Button>
                   <span className="text-xs text-muted-foreground px-2">
-                    {state.data.page} / {state.data.total_pages}
+                    {historyData.page} / {historyData.total_pages}
                   </span>
-                  <Button variant="outline" size="sm" disabled={!state.data.has_next} onClick={() => setPage((p) => p + 1)}>
+                  <Button variant="outline" size="sm" disabled={!historyData.has_next} onClick={() => setPage((p) => p + 1)}>
                     Next
                   </Button>
                 </div>

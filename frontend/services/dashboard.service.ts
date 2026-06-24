@@ -8,12 +8,15 @@
  * - throwIfError() for consistent API error handling
  * - Named export `dashboardService` with typed methods
  *
+ * Uses resilientFetch for automatic retry on transient failures.
+ *
  * Usage:
  *   const analytics = await dashboardService.getAnalytics();
  *   console.log(analytics.total_resumes, analytics.average_score);
  */
 
 import { supabase } from "@/lib/supabase";
+import { resilientFetch, TIMEOUT } from "@/services/retry-fetch";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,9 +85,12 @@ export const dashboardService = {
   /**
    * Fetch analytics for the authenticated user's resume history.
    *
+   * Retries automatically on transient server errors and network failures.
+   * GET requests within a 2-second window are deduplicated in memory.
+   *
    * Throws a meaningful Error if:
    * - The user is not signed in (no session)
-   * - The API returns a non-2xx status
+   * - The API returns a non-2xx status after all retries
    *
    * @returns DashboardAnalytics — safe empty-state values when no data exists.
    *
@@ -95,13 +101,17 @@ export const dashboardService = {
   async getAnalytics(): Promise<DashboardAnalytics> {
     const token = await getBearerToken();
 
-    const response = await fetch(DASHBOARD_URL, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    const response = await resilientFetch(
+      DASHBOARD_URL,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { timeoutMs: TIMEOUT.DASHBOARD },
+    );
 
     await throwIfError(response);
     return response.json() as Promise<DashboardAnalytics>;
