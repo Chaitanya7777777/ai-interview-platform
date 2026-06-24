@@ -34,12 +34,16 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [emailErrorIsConflict, setEmailErrorIsConflict] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Clear inline error when user edits the email field
   const handleEmailChange = (value: string) => {
     setEmail(value);
-    if (emailError) setEmailError("");
+    if (emailError) {
+      setEmailError("");
+      setEmailErrorIsConflict(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -82,19 +86,19 @@ function SignupForm() {
       console.log("[Auth] verification_sent:", normalizedEmail.split("@")[1]);
       router.push(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
     } catch (error) {
-      // Sanitize Supabase error: do not expose internal messages like
-      // "User already registered" — replace with a generic safe message.
       const raw = error instanceof Error ? error.message : "";
       const isAlreadyRegistered =
         raw.toLowerCase().includes("already") ||
         raw.toLowerCase().includes("exists") ||
         raw.toLowerCase().includes("registered");
 
-      toast.error(
-        isAlreadyRegistered
-          ? "Unable to create account."
-          : raw || "Failed to create account. Please try again."
-      );
+      if (isAlreadyRegistered) {
+        // Surface as an inline email-field error with a Sign in shortcut.
+        setEmailError("An account already exists for this email.");
+        setEmailErrorIsConflict(true);
+      } else {
+        toast.error(raw || "Failed to create account. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -144,7 +148,17 @@ function SignupForm() {
             />
             {/* Inline email error — not a toast */}
             {emailError && (
-              <p className="text-xs text-destructive">{emailError}</p>
+              <p className="text-xs text-destructive flex items-center gap-1 flex-wrap">
+                {emailError}
+                {emailErrorIsConflict && (
+                  <Link
+                    href="/login"
+                    className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+                  >
+                    Sign in instead →
+                  </Link>
+                )}
+              </p>
             )}
           </div>
 
