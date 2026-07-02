@@ -82,9 +82,23 @@ function SignupForm() {
         return;
       }
 
-      // Email confirmation required — navigate to verify page.
+      // ── Duplicate email detection ──────────────────────────────────────────
+      // When "Confirm email" is ON, Supabase does NOT throw an error for a
+      // duplicate signup — it silently returns { user, session: null } where
+      // user.identities is an empty array []. This is intentional on Supabase's
+      // side to prevent email enumeration. We detect it here and show a clear
+      // inline error instead of routing the user to /verify-email.
+      if (result.user && Array.isArray(result.user.identities) && result.user.identities.length === 0) {
+        console.log("[Auth] blocked_duplicate:", normalizedEmail.split("@")[1]);
+        setEmailError("An account already exists for this email.");
+        setEmailErrorIsConflict(true);
+        return;
+      }
+
+      // New account — email confirmation required. Navigate to verify page.
       console.log("[Auth] verification_sent:", normalizedEmail.split("@")[1]);
       router.push(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+
     } catch (error) {
       const raw = error instanceof Error ? error.message : "";
       const isAlreadyRegistered =
