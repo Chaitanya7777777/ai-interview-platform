@@ -4,7 +4,6 @@ profile.py  (routes)
 GET  /api/v1/profile/me        — fetch current user's profile
 PATCH /api/v1/profile/me       — update full_name / avatar_url
 """
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession

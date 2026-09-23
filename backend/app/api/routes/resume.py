@@ -32,7 +32,6 @@ The service only calls session.flush() so every DB write in a single
 request is committed atomically.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

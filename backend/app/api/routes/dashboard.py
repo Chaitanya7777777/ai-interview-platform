@@ -20,7 +20,6 @@ Route → dashboard_service.get_dashboard_analytics() → DashboardAnalyticsResp
 DB logic lives entirely in dashboard_service.py, not here.
 """
 
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession

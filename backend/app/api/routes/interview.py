@@ -24,7 +24,6 @@ All AI logic lives in ai_service.py.
 This file only orchestrates and handles HTTP-level concerns.
 """
 
-from __future__ import annotations
 
 import json
 import logging

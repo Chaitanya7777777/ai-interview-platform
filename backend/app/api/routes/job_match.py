@@ -35,7 +35,6 @@ POST route calls session.commit() after the service completes.
 GET routes are read-only — no commit needed.
 """
 
-from __future__ import annotations
 
 import logging
 from uuid import UUID

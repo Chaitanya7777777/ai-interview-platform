@@ -1,6 +1,5 @@
 """Enhanced health check endpoint with multi-probe diagnostics."""
 
-from __future__ import annotations
 
 import logging
 import time
