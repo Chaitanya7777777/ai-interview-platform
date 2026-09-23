@@ -49,6 +49,10 @@ from app.services.profile_service import get_or_create_profile
 from app.services.resume_db_service import delete_resume, get_resume_history
 from app.services.resume_service import validate_and_parse_resume
 
+from starlette.requests import Request
+
+from app.core.rate_limit import limiter
+
 router = APIRouter(prefix="/resume", tags=["resume"])
 
 # Max records per page the caller may request
@@ -67,7 +71,9 @@ MAX_PAGE_SIZE = 50
         "Pass **?analyse=true** to also receive a structured AI analysis."
     ),
 )
+@limiter.limit("3/minute")
 async def upload_resume(
+    request: Request,
     file: UploadFile = File(..., description="Resume file — .pdf or .docx, max 5 MB"),
     analyse: bool = Query(
         default=False,
@@ -115,7 +121,9 @@ async def upload_resume(
         "responses lightweight."
     ),
 )
+@limiter.limit("10/minute")
 async def get_resume_history_endpoint(
+    request: Request,
     page: int = Query(default=1, ge=1, description="Page number (1-based)"),
     page_size: int = Query(
         default=10,
@@ -156,7 +164,9 @@ async def get_resume_history_endpoint(
         "never exposed as a JSON payload."
     ),
 )
+@limiter.limit("10/minute")
 async def download_resume(
+    request: Request,
     resume_id: str,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -215,7 +225,9 @@ async def download_resume(
         "If storage deletion fails, the DB record is preserved and the request aborts."
     ),
 )
+@limiter.limit("5/minute")
 async def delete_resume_endpoint(
+    request: Request,
     resume_id: str,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),

@@ -54,6 +54,10 @@ from app.services.interview_service import (
 )
 from app.services.profile_service import get_or_create_profile
 
+from starlette.requests import Request
+
+from app.core.rate_limit import limiter
+
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 logger = logging.getLogger(__name__)
 
@@ -71,7 +75,9 @@ MAX_PAGE_SIZE = 50
         "Questions mix technical, behavioral, and situational types."
     ),
 )
+@limiter.limit("5/minute")
 async def generate_interview(
+    request: Request,
     body: GenerateInterviewRequest,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -170,7 +176,9 @@ async def generate_interview(
         "When the last question is answered, the interview is auto-finalized."
     ),
 )
+@limiter.limit("10/minute")
 async def evaluate_answer(
+    request: Request,
     interview_id: str,
     body: EvaluateAnswerRequest,
     current_user: SupabaseUser = Depends(get_current_user),
@@ -263,7 +271,9 @@ async def evaluate_answer(
     summary="Get interview history",
     description="Paginated list of past interview sessions for the authenticated user.",
 )
+@limiter.limit("10/minute")
 async def get_history(
+    request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=MAX_PAGE_SIZE),
     current_user: SupabaseUser = Depends(get_current_user),
@@ -281,7 +291,9 @@ async def get_history(
     summary="Get interview detail",
     description="Full interview with all questions, answers, and AI feedback.",
 )
+@limiter.limit("10/minute")
 async def get_detail(
+    request: Request,
     interview_id: str,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -308,7 +320,9 @@ async def get_detail(
     summary="Delete an interview session",
     description="Permanently delete an interview session owned by the authenticated user.",
 )
+@limiter.limit("5/minute")
 async def delete_interview(
+    request: Request,
     interview_id: str,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),

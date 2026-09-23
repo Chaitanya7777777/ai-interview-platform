@@ -45,7 +45,7 @@ services:
         value: groq
 
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: meta-llama/llama-4-scout-17b-16e-instruct
 
       # Comma-separated list — add your Vercel URL here after first deploy
       # Example: https://resume-analyser-abc123.vercel.app,http://localhost:3000

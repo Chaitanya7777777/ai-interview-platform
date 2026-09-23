@@ -69,6 +69,10 @@ from app.services.profile_service import get_or_create_profile
 from app.services import storage_service
 from app.services.report_service import generate_and_upload_report, get_signed_report_url
 
+from starlette.requests import Request
+
+from app.core.rate_limit import limiter
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/job-match", tags=["job-match"])
@@ -90,7 +94,9 @@ MAX_PAGE_SIZE = 50
         "the result is updated (not duplicated)."
     ),
 )
+@limiter.limit("5/minute")
 async def create_job_match(
+    request: Request,
     body: JobMatchRequest,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -127,7 +133,9 @@ async def create_job_match(
         "resume filename, match score, ATS score, and timestamp."
     ),
 )
+@limiter.limit("10/minute")
 async def get_history(
+    request: Request,
     page: int = Query(default=1, ge=1, description="Page number (1-based)"),
     page_size: int = Query(
         default=10,
@@ -157,7 +165,9 @@ async def get_history(
         "recent matches. Returns safe zero-state values when no matches exist."
     ),
 )
+@limiter.limit("10/minute")
 async def get_dashboard_stats(
+    request: Request,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> JobMatchDashboardStats:
@@ -176,7 +186,9 @@ async def get_dashboard_stats(
         "Returns the text alongside extracted metadata (job_title, company_name)."
     ),
 )
+@limiter.limit("10/minute")
 async def view_job_description(
+    request: Request,
     match_id: UUID,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -248,7 +260,9 @@ async def view_job_description(
         "Ownership-verified (returns 404 if the match belongs to another profile)."
     ),
 )
+@limiter.limit("10/minute")
 async def get_job_match_detail_endpoint(
+    request: Request,
     match_id: UUID,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -272,7 +286,9 @@ async def get_job_match_detail_endpoint(
     summary="Export Job Match to PDF report",
     description="Generate a high-fidelity PDF report of the job match analysis and save it to storage.",
 )
+@limiter.limit("5/minute")
 async def export_job_match_report(
+    request: Request,
     match_id: UUID,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -318,7 +334,9 @@ async def export_job_match_report(
     summary="Get signed report download URL redirect",
     description="Generates a signed URL for the report PDF and redirects the client to trigger download.",
 )
+@limiter.limit("10/minute")
 async def get_report_download_redirect(
+    request: Request,
     match_id: UUID,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
@@ -356,7 +374,9 @@ async def get_report_download_redirect(
     summary="Get job match context for practice interview",
     description="Loads match score, target role, company, and generates focus topics for custom prep.",
 )
+@limiter.limit("10/minute")
 async def get_job_match_interview_context(
+    request: Request,
     match_id: UUID,
     current_user: SupabaseUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),

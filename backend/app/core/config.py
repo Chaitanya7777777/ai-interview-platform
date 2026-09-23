@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # ── AI provider ────────────────────────────────────────────────────────────
     ai_provider: str = Field(default="groq", alias="AI_PROVIDER")
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
-    groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
+    groq_model: str = Field(default="meta-llama/llama-4-scout-17b-16e-instruct", alias="GROQ_MODEL")
 
     # ── CORS ───────────────────────────────────────────────────────────────
     # Stored as a raw string so pydantic-settings does NOT attempt json.loads()
