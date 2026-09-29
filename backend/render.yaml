@@ -45,7 +45,7 @@ services:
         value: groq
 
       - key: GROQ_MODEL
-        value: llama3-70b-8192
+        value: openai/gpt-oss-20b
       # Comma-separated list — add your Vercel URL here after first deploy
       # Example: https://resume-analyser-abc123.vercel.app,http://localhost:3000
       - key: CORS_ORIGINS
